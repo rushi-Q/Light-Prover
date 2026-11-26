@@ -97,7 +97,7 @@ def hero(t):
          rrect(0.5, 0.5, W - 1, H - 1, 16, t["bg"], t["cardring"])]
     # header
     o.append(text(40, 54, "LIGHT-PROVER", 12, t["accent"], "700", spacing="2"))
-    o.append(text(40, 84, "Complete, sound verification of Lean 4 proofs - fast enough for the edit loop", 22, t["ink"], "600"))
+    o.append(text(40, 84, "Sound verification of Lean 4 proofs against a pinned challenge", 22, t["ink"], "600"))
     o.append(text(40, 110, "Most of the speed sits outside a small, pinned judge: a bug in the fast path can cost a verdict, "
                   "not turn an invalid proof into ACCEPTED.", 13.5, t["ink2"]))
 
@@ -105,9 +105,9 @@ def hero(t):
     cx, cy, cw = 40, 150, 240
     o.append(text(cx, cy, "REAL WORKFLOWS", 11, t["muted"], "700", spacing="1.5"))
     flows = [("Proof engineering", "a verdict on every edit and commit"),
-             ("AI provers & RL", "sound per-attempt rewards at scale"),
-             ("CI on proof repositories", "PR gates, history replays"),
-             ("Final sign-off", "huge machine-generated proofs")]
+             ("AI provers & RL", "a sound verdict per attempt"),
+             ("CI on proof repositories", "pull-request gates (experimental)"),
+             ("Final sign-off", "large proofs such as the RH proof")]
     fy = cy + 16
     centers = []
     for name, sub in flows:
@@ -200,9 +200,9 @@ def hero(t):
         o.append(rrect(tx, by - 6, wv, 26, 13, t["card"], t["cardring"]))
         o.append(text(tx + wv / 2, by + 11, name, 11.5, t["ink2"], "500", "middle"))
         tx += wv + 10
-    o.append(text(40, by + 48, "RH proof, 175,187 modules, from sources on one 384-thread server: about 30 minutes. The untuned "
-                  "official toolchain took 55.7 h on the same server while it was shared;", 12, t["ink2"]))
-    o.append(text(40, by + 66, "with one allocator setting the official kernel replay alone takes 13 h 13 min.", 12, t["ink2"]))
+    o.append(text(40, by + 48, "RH proof, 175,187 modules, from sources on one 384-thread server: about 30 minutes. The official "
+                  "toolchain with default settings took 55.7 h on the same server while it was shared;", 12, t["ink2"]))
+    o.append(text(40, by + 66, "with one allocator setting the official kernel replay alone took 13 h 13 min.", 12, t["ink2"]))
 
     # motion layer: invisible unless CSS animation runs (timings in seconds within one LOOP)
     o.append(glow(t, cx - 4, cy + 12, cw + 8, 4 * 78 - 14 + 8, 15, 0.0))

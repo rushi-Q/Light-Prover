@@ -2,7 +2,7 @@
 <style>.fx{opacity:0;animation:7.0s ease-in-out infinite both}.dash{animation-name:dash;animation-timing-function:linear}.glow{animation-name:glow}@keyframes dash{0%{stroke-dashoffset:70;opacity:0}3%{opacity:.85}11%{opacity:.85}14%{stroke-dashoffset:-100;opacity:0}100%{stroke-dashoffset:-100;opacity:0}}@keyframes glow{0%{opacity:0}5%{opacity:1}13%{opacity:1}19%{opacity:0}100%{opacity:0}}@media (prefers-reduced-motion:reduce){.fx{animation:none!important;opacity:0!important}}</style>
 <rect x="0.5" y="0.5" width="1199" height="661" rx="16" fill="#fcfcfb" stroke="rgba(11,11,11,0.10)" stroke-width="1"/>
 <text x="40" y="54" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="700" fill="#2a78d6" text-anchor="start" letter-spacing="2">LIGHT-PROVER</text>
-<text x="40" y="84" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="22" font-weight="600" fill="#0b0b0b" text-anchor="start">Complete, sound verification of Lean 4 proofs - fast enough for the edit loop</text>
+<text x="40" y="84" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="22" font-weight="600" fill="#0b0b0b" text-anchor="start">Sound verification of Lean 4 proofs against a pinned challenge</text>
 <text x="40" y="110" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13.5" font-weight="400" fill="#52514e" text-anchor="start">Most of the speed sits outside a small, pinned judge: a bug in the fast path can cost a verdict, not turn an invalid proof into ACCEPTED.</text>
 <text x="40" y="150" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" font-weight="700" fill="#898781" text-anchor="start" letter-spacing="1.5">REAL WORKFLOWS</text>
 <rect x="40" y="166" width="240" height="64" rx="12" fill="#ffffff" stroke="rgba(11,11,11,0.10)" stroke-width="1"/>
@@ -10,13 +10,13 @@
 <text x="58" y="214" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#52514e" text-anchor="start">a verdict on every edit and commit</text>
 <rect x="40" y="244" width="240" height="64" rx="12" fill="#ffffff" stroke="rgba(11,11,11,0.10)" stroke-width="1"/>
 <text x="58" y="272" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#0b0b0b" text-anchor="start">AI provers &amp; RL</text>
-<text x="58" y="292" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#52514e" text-anchor="start">sound per-attempt rewards at scale</text>
+<text x="58" y="292" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#52514e" text-anchor="start">a sound verdict per attempt</text>
 <rect x="40" y="322" width="240" height="64" rx="12" fill="#ffffff" stroke="rgba(11,11,11,0.10)" stroke-width="1"/>
 <text x="58" y="350" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#0b0b0b" text-anchor="start">CI on proof repositories</text>
-<text x="58" y="370" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#52514e" text-anchor="start">PR gates, history replays</text>
+<text x="58" y="370" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#52514e" text-anchor="start">pull-request gates (experimental)</text>
 <rect x="40" y="400" width="240" height="64" rx="12" fill="#ffffff" stroke="rgba(11,11,11,0.10)" stroke-width="1"/>
 <text x="58" y="428" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14.5" font-weight="600" fill="#0b0b0b" text-anchor="start">Final sign-off</text>
-<text x="58" y="448" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#52514e" text-anchor="start">huge machine-generated proofs</text>
+<text x="58" y="448" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#52514e" text-anchor="start">large proofs such as the RH proof</text>
 <text x="320" y="150" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" font-weight="700" fill="#898781" text-anchor="start" letter-spacing="1.5">THE ENGINE</text>
 <rect x="320" y="166" width="600" height="46" rx="12" fill="#ffffff" stroke="rgba(11,11,11,0.10)" stroke-width="1"/>
 <rect x="338" y="177" width="32.0" height="24" rx="12" fill="#f3f2ee"/>
@@ -102,8 +102,8 @@
 <text x="865.35" y="573" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="500" fill="#52514e" text-anchor="middle">384-thread server</text>
 <rect x="946.7" y="556" width="178.2" height="26" rx="13" fill="#ffffff" stroke="rgba(11,11,11,0.10)" stroke-width="1"/>
 <text x="1035.8" y="573" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11.5" font-weight="500" fill="#52514e" text-anchor="middle">Lean 4.26 - 4.37.0-rc1</text>
-<text x="40" y="610" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#52514e" text-anchor="start">RH proof, 175,187 modules, from sources on one 384-thread server: about 30 minutes. The untuned official toolchain took 55.7 h on the same server while it was shared;</text>
-<text x="40" y="628" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#52514e" text-anchor="start">with one allocator setting the official kernel replay alone takes 13 h 13 min.</text>
+<text x="40" y="610" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#52514e" text-anchor="start">RH proof, 175,187 modules, from sources on one 384-thread server: about 30 minutes. The official toolchain with default settings took 55.7 h on the same server while it was shared;</text>
+<text x="40" y="628" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#52514e" text-anchor="start">with one allocator setting the official kernel replay alone took 13 h 13 min.</text>
 <rect class="fx glow" x="36" y="162" width="248" height="306" rx="15" fill="none" stroke="#2a78d6" stroke-opacity="0.45" stroke-width="1.5" opacity="0" style="animation-delay:0.00s"/>
 <path class="fx dash" d="M280,198 C300.0,198 300.0,189 312,189" pathLength="100" fill="none" stroke="#2a78d6" stroke-width="2.25" stroke-linecap="round" stroke-dasharray="29.6 200" stroke-dashoffset="70" opacity="0" style="animation-delay:0.60s"/>
 <path class="fx dash" d="M280,276 C300.0,276 300.0,189 312,189" pathLength="100" fill="none" stroke="#2a78d6" stroke-width="2.25" stroke-linecap="round" stroke-dasharray="10.4 200" stroke-dashoffset="70" opacity="0" style="animation-delay:0.68s"/>
