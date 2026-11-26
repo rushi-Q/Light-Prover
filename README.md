@@ -65,7 +65,7 @@ on tmpfs).
 Judging the existing export alone took 423.2 s at 384 threads (median of 2). Under a 128 GB memory limit the low-memory
 judge (32 threads) took 1,297 s in a run concurrent with its four mutant checks (all REJECTED), and 1,589.0 s in
 another run with the same binaries, concurrent with five other runs. Under 64 GB the ultra-low-memory judge (24 threads)
-took 4,265.6 s (memory.peak 62.2 GiB); its four mutant checks were REJECTED within 64 GB, M1 and M2 on machine B.
+took 4,265.6 s (memory.peak 62.2 GiB); its four mutant checks were REJECTED within 64 GB.
 On the other measured projects (77 mathematics claims, 9 code-verification projects, 4 new openai/math challenges;
 end to end) the ratio ranges from 0.6x (LNSym, Light-Prover slower) to 6.2x (flt-regular, Light-Prover on the released package,
 official time from an earlier run on the same machine type). 413 of 413 openai/math
