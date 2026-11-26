@@ -1,0 +1,132 @@
+{
+ "incr_server": "$LIGHT_LEAN/fastverify/tests/sound-gates/tools/incr-server-args.sh",
+ "incr_threads": 128,
+ "incr_cases": [
+  {
+   "name": "T1-snap-honest-final-honest",
+   "snaps": [
+    "/scratch/bench-inputs/rh-mid/ref/solution.export"
+   ],
+   "final": "/scratch/bench-inputs/rh-mid/ref/solution.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export",
+   "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json",
+   "expect": "ACCEPTED",
+   "server_args": [
+    "--targeted=/scratch/sound-gates-work/midmut/targets-rhmid.txt"
+   ],
+   "pre_final_sleep": 0
+  },
+  {
+   "name": "T2-snap-honest-final-midM2",
+   "snaps": [
+    "/scratch/bench-inputs/rh-mid/ref/solution.export"
+   ],
+   "final": "/scratch/sound-gates-work/midmut/midM2.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export",
+   "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json",
+   "expect": "REJECTED",
+   "server_args": [
+    "--targeted=/scratch/sound-gates-work/midmut/targets-rhmid.txt"
+   ],
+   "pre_final_sleep": 0
+  },
+  {
+   "name": "T3-snap-honest-final-midM1",
+   "snaps": [
+    "/scratch/bench-inputs/rh-mid/ref/solution.export"
+   ],
+   "final": "/scratch/sound-gates-work/midmut/midM1.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export",
+   "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json",
+   "expect": "REJECTED",
+   "server_args": [
+    "--targeted=/scratch/sound-gates-work/midmut/targets-rhmid.txt"
+   ],
+   "pre_final_sleep": 0
+  },
+  {
+   "name": "T4-snap-midM1-final-midM1",
+   "snaps": [
+    "/scratch/sound-gates-work/midmut/midM1.export"
+   ],
+   "final": "/scratch/sound-gates-work/midmut/midM1.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export",
+   "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json",
+   "expect": "REJECTED",
+   "server_args": [
+    "--targeted=/scratch/sound-gates-work/midmut/targets-rhmid.txt"
+   ],
+   "pre_final_sleep": 0
+  },
+  {
+   "name": "T5-snap-midM1-final-honest",
+   "snaps": [
+    "/scratch/sound-gates-work/midmut/midM1.export"
+   ],
+   "final": "/scratch/bench-inputs/rh-mid/ref/solution.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export",
+   "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json",
+   "expect": "ACCEPTED",
+   "server_args": [
+    "--targeted=/scratch/sound-gates-work/midmut/targets-rhmid.txt"
+   ],
+   "pre_final_sleep": 0
+  },
+  {
+   "name": "T6-snap-NatAddBogus+honest-final-honest",
+   "snaps": [
+    "/scratch/sound-gates-work/midmut/natadd-bogus.export",
+    "/scratch/bench-inputs/rh-mid/ref/solution.export"
+   ],
+   "final": "/scratch/bench-inputs/rh-mid/ref/solution.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export",
+   "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json",
+   "expect": "ACCEPTED",
+   "server_args": [
+    "--targeted=/scratch/sound-gates-work/midmut/targets-rhmid.txt"
+   ],
+   "pre_final_sleep": 0
+  },
+  {
+   "name": "T7-snap-noNatPred+honest-final-honest(Nat.sub-must-not-skip)",
+   "snaps": [
+    "/scratch/sound-gates-work/midmut/midDelNatPred.export",
+    "/scratch/bench-inputs/rh-mid/ref/solution.export"
+   ],
+   "final": "/scratch/bench-inputs/rh-mid/ref/solution.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export",
+   "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json",
+   "expect": "ACCEPTED",
+   "server_args": [
+    "--targeted=/scratch/sound-gates-work/midmut/targets-rhmid.txt"
+   ],
+   "pre_final_sleep": 0
+  },
+  {
+   "name": "T8-nosnap-final-honest",
+   "snaps": [],
+   "final": "/scratch/bench-inputs/rh-mid/ref/solution.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export",
+   "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json",
+   "expect": "ACCEPTED",
+   "server_args": [
+    "--targeted=/scratch/sound-gates-work/midmut/targets-rhmid.txt"
+   ],
+   "pre_final_sleep": 0
+  },
+  {
+   "name": "T9-snap-honest-final-deletedOneMul",
+   "snaps": [
+    "/scratch/bench-inputs/rh-mid/ref/solution.export"
+   ],
+   "final": "/scratch/sound-gates-work/midmut/midDelOneMul.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export",
+   "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json",
+   "expect": "REJECTED",
+   "server_args": [
+    "--targeted=/scratch/sound-gates-work/midmut/targets-rhmid.txt"
+   ],
+   "pre_final_sleep": 0
+  }
+ ]
+}

@@ -1,0 +1,5 @@
+#!/bin/sh
+L="-L/opt/glibc217/lib -static-libstdc++"   # 4.37: cadical is linked by clang++ (link steps only)
+for a in "$@"; do case "$a" in -c|-S|-E|-M|-MM) L=;; esac; done
+exec "${FVCC_CENV18:-${PORT_WORK:?work root of the portable-toolchain recipe, or set FVCC_CENV18 (required)}/cenv18}/bin/clang-18" --driver-mode=g++ --no-default-config --target=x86_64-pc-linux-gnu --sysroot=/ \
+  --gcc-install-dir=/opt/rh/gcc-toolset-13/root/usr/lib/gcc/x86_64-redhat-linux/13 $L "$@"

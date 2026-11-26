@@ -1,0 +1,9 @@
+name = "mini"
+srcDir = "src"
+defaultTargets = ["Main"]
+leanOptions = { autoImplicit = false }
+moreServerArgs = 7
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]

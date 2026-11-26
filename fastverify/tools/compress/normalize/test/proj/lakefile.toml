@@ -1,0 +1,14 @@
+name = "normtest"
+srcDir = "src"
+defaultTargets = ["T", "Main"]
+
+[leanOptions]
+autoImplicit = false
+
+[[lean_lib]]
+name = "T"
+globs = ["T.+"]
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]

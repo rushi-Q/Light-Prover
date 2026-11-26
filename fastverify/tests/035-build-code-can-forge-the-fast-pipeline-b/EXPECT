@@ -1,0 +1,7 @@
+# case official_rc official_export_sha256[:16]  (from a live official run; matches the values recorded with the original repro)
+# (checked on release a17abf1) case '-': official = the comparator's `lake build Main` (Lean 4.36 Check.lean:733), so
+# Extra's type error (a default target Main does not import) is not part of the verdict: ACCEPTED (was 1 with a default-target build)
+- 0 afac90272d10b6b5
+proj-forge 0 ea4cefa2f3fa1409
+proj-inj 1 -
+proj-tclib 1 -

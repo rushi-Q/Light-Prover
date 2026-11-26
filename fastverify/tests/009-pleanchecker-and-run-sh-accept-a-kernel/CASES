@@ -1,0 +1,4 @@
+# 009: kernel-invalid declaration with sparse indices; read from a regular file AND from a pipe (/dev/stdin): never accept
+control-good  | in/solution.export | in/solution.export | ../cfg-009.json | 0 | plain
+bad-file      | in/solution.export | -                  | ../cfg-009.json | 1 | gen:../gen-bad.sh
+bad-pipe      | in/solution.export | -                  | ../cfg-009.json | 1 | gen:../gen-bad.sh+pipe

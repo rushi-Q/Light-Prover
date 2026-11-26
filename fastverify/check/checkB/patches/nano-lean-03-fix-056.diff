@@ -1,0 +1,65 @@
+--- a/src/checker/env.rs
++++ b/src/checker/env.rs
+@@ -44,6 +44,18 @@
+         Some((i, self.ctor(i.ctors[0])?))
+     }
+ 
++    /// F06 fix-056: the inductive a projection may project from, as Lean 4.36 `infer_proj` allows it: exactly one
++    /// constructor, indices allowed (the type's arguments are then the parameters followed by the indices).
++    fn proj_ctor(&self, n: NamePtr<'t>) -> Option<(Inductive<'t>, Constructor<'t>)> {
++        let Some(Declar::Ind(i)) = self.declar(n) else {
++            return None;
++        };
++        if i.ctors.len() != 1 {
++            return None;
++        }
++        Some((i, self.ctor(i.ctors[0])?))
++    }
++
+     #[inline]
+     fn structure_like(&self, n: NamePtr<'t>) -> Option<(Inductive<'t>, Constructor<'t>)> {
+         self.single_ctor(n).filter(|(i, _)| !i.is_rec)
+--- a/src/checker/mod.rs
++++ b/src/checker/mod.rs
+@@ -550,14 +550,16 @@
+             reject!(self, "projection of a non-structure")
+         };
+         ensure!(self, iname == name, "projection type mismatch");
+-        let Some((ind, ctor)) = self.single_ctor(name) else {
++        let Some((ind, ctor)) = self.proj_ctor(name) else {
+             reject!(self, "projection of a non-structure")
+         };
+         ensure!(
+             self,
+-            args.len() == usize::from(ind.num_params),
++            args.len() == usize::from(ind.num_params) + usize::from(ind.num_indices),
+             "projection of a non-structure"
+         );
++        // F06 fix-056: only the parameters are instantiated in the constructor type (Lean 4.36 infer_proj)
++        let args = args[..usize::from(ind.num_params)].to_vec();
+         let ct = self.ctx.declar_type(&Declar::Ctor(ctor), levels);
+         let Some(ct) = strip_pis(ct, args.len()) else {
+             reject!(self, "expected a Pi binder")
+--- a/src/value_checker/infer.rs
++++ b/src/value_checker/infer.rs
+@@ -100,16 +100,17 @@
+             reject!(self, "projection of a non-structure")
+         };
+         ensure!(self, iname == name, "projection type mismatch");
+-        let Some((ind, ctor)) = self.single_ctor(name) else {
++        let Some((ind, ctor)) = self.proj_ctor(name) else {
+             reject!(self, "projection of a non-structure")
+         };
+         ensure!(
+             self,
+-            args.len() == usize::from(ind.num_params),
++            args.len() == usize::from(ind.num_params) + usize::from(ind.num_indices),
+             "projection of a non-structure"
+         );
+         let mut r = self.const_type(ctor.info.name, ls)?;
+-        for &a in args {
++        // F06 fix-056: only the parameters are instantiated in the constructor type (Lean 4.36 infer_proj)
++        for &a in &args[..usize::from(ind.num_params)] {
+             let K::Pi(_, c) = r.k else {
+                 reject!(self, "expected a function type")
+             };

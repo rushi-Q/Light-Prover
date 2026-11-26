@@ -1,0 +1,92 @@
+# To enable CI, move this file to .github/workflows/ci.yml (pushing workflow files needs a token with the "workflow" scope).
+# Fast checks that need no Lean toolchain, no pinned binaries and no network access beyond checkout.
+# The full regression suite and the soundness gates need the official Lean toolchains and the pinned fast binaries;
+# they are run on prepared hosts (see CONTRIBUTING.md).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  syntax:
+    name: Syntax (Python byte-compile, bash -n)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Byte-compile project Python files
+        run: |
+          python3 -I - <<'PY'
+          import os, sys
+          # third-party trees keep their own conventions
+          skip = {"./sources", "./fastverify/check/notary/gruszka-src", "./.git"}
+          n = bad = 0
+          for root, dirs, files in os.walk("."):
+              dirs[:] = sorted(d for d in dirs if os.path.join(root, d) not in skip
+                               and d not in ("__pycache__", ".lake", "target"))
+              for f in sorted(files):
+                  if not f.endswith(".py"):
+                      continue
+                  p = os.path.join(root, f)
+                  n += 1
+                  try:
+                      with open(p, "rb") as fh:
+                          compile(fh.read(), p, "exec", dont_inherit=True)
+                  except (SyntaxError, ValueError) as e:
+                      bad += 1
+                      print(f"::error file={p}::{e}")
+          print(f"compiled {n} Python files, {bad} failed")
+          sys.exit(1 if bad else 0)
+          PY
+      - name: Check shell script syntax
+        run: |
+          n=0; bad=0
+          while IFS= read -r -d '' f; do
+            case $f in
+              *.sh) ;;
+              *) head -n 1 "$f" | grep -qE '^#!.*\b(ba)?sh\b' || continue ;;
+            esac
+            n=$((n + 1))
+            bash -n "$f" || { bad=$((bad + 1)); echo "::error file=$f::bash -n failed"; }
+          done < <(find . \( -path ./sources -o -path ./fastverify/check/notary/gruszka-src -o -path ./.git \
+                     -o -name .lake -o -name target \) -prune -o -type f \( -name '*.sh' -o ! -name '*.*' \) -print0)
+          echo "checked $n shell scripts, $bad failed"
+          [ "$bad" -eq 0 ]
+
+  unit:
+    name: Unit tests without Lean
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      LIGHT_LEAN: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Cross-version check (check/xversion)
+        run: bash fastverify/check/xversion/test/run.sh
+      - name: sound-auto planner units (lib/autotune.py)
+        run: python3 -I fastverify/tests/sound-auto/unit.py
+      - name: Resource budget tools
+        run: bash fastverify/tests/budget/run.sh
+      - name: Compression regressions (compress-failure-classes)
+        run: bash fastverify/tests/compress-failure-classes/run.sh
+      - name: Compression tools (prune, scheme)
+        run: |
+          python3 -I fastverify/tools/compress/prune/test/test_prune.py
+          bash fastverify/tools/compress/scheme/test/run.sh
+          bash fastverify/tools/compress/scheme/test/attribute_test.sh

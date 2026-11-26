@@ -1,0 +1,10 @@
+# name | challenge | solution | config | official_rc | mode | env      (002: path / missing-challenge conditions must not skip the comparison)
+axiom-plain        | toy/axiom/challenge.export | toy/axiom/solution.export | @/rh5-nanoda.json | 1 | plain
+axiom-suitex       | toy/axiom/challenge.export | toy/axiom/solution.export | @/rh5-nanoda.json | 1 | path:x/suitex
+axiom-arena        | toy/axiom/challenge.export | toy/axiom/solution.export | @/rh5-nanoda.json | 1 | path:x/arena/suite/bad
+axiom-inputs-suitex| toy/axiom/challenge.export | toy/axiom/solution.export | @/rh5-nanoda.json | 1 | path:y/inputs/suitex
+axiom-nochallenge  | toy/axiom/challenge.export | toy/axiom/solution.export | @/rh5-nanoda.json | 1 | nochallenge
+wrongstmt-plain    | toy/wrongstmt/challenge.export | toy/wrongstmt/solution.export | @/rh5-nanoda.json | 1 | plain
+wrongstmt-suitex   | toy/wrongstmt/challenge.export | toy/wrongstmt/solution.export | @/rh5-nanoda.json | 1 | path:x/suitex
+wrongstmt-arena    | toy/wrongstmt/challenge.export | toy/wrongstmt/solution.export | @/rh5-nanoda.json | 1 | path:x/arena/suite/bad
+wrongstmt-nochall  | toy/wrongstmt/challenge.export | toy/wrongstmt/solution.export | @/rh5-nanoda.json | 1 | nochallenge

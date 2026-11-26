@@ -1,0 +1,8 @@
+{
+  "challenge_module": "Chal",
+  "solution_module": "Chal",
+  "theorem_names": ["goal_thm"],
+  "definition_names": [],
+  "permitted_axioms": ["propext", "Quot.sound", "Classical.choice"],
+  "enable_nanoda": false
+}

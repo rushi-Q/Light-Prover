@@ -1,0 +1,423 @@
+{
+ "AdjacentChar": {
+  "lean": {
+   "4.33.1": [
+    "t"
+   ],
+   "4.36.0": [
+    "t"
+   ]
+  },
+  "want": [
+   "t"
+  ],
+  "note": "= Lean"
+ },
+ "AdjacentProjection": {
+  "lean": {
+   "4.33.1": [
+    "f._proof_1",
+    "t"
+   ],
+   "4.36.0": [
+    "f._proof_1",
+    "t"
+   ]
+  },
+  "want": [
+   "t"
+  ],
+  "note": "f._proof_1: auxiliary theorem under a DOTTED generated name, never an inference target -> not listed"
+ },
+ "AuxExample": {
+  "lean": {
+   "4.33.1": [],
+   "4.36.0": []
+  },
+  "want": [],
+  "note": "= Lean"
+ },
+ "AuxTheorem": {
+  "lean": {
+   "4.33.1": [
+    "t",
+    "t._proof_1"
+   ],
+   "4.36.0": [
+    "t",
+    "t._proof_1"
+   ]
+  },
+  "want": [
+   "t"
+  ],
+  "note": "t._proof_1: auxiliary theorem under a DOTTED generated name, never an inference target -> not listed"
+ },
+ "Bom": {
+  "lean": {
+   "4.33.1": "ERROR",
+   "4.36.0": "ERROR"
+  },
+  "want": "UNCLEAR",
+  "note": "Lean rejects the file (BOM)"
+ },
+ "Comments": {
+  "lean": {
+   "4.33.1": [
+    "t"
+   ],
+   "4.36.0": [
+    "t"
+   ]
+  },
+  "want": [
+   "t"
+  ],
+  "note": "= Lean"
+ },
+ "CoreLemmaIdent": {
+  "lean": {
+   "4.33.1": [],
+   "4.36.0": []
+  },
+  "want": "UNCLEAR",
+  "note": "`lemma` without a Mathlib/Batteries import: an identifier in core Lean -> refused"
+ },
+ "Crlf": {
+  "lean": {
+   "4.33.1": [
+    "t"
+   ],
+   "4.36.0": [
+    "t"
+   ]
+  },
+  "want": [
+   "t"
+  ],
+  "note": "= Lean"
+ },
+ "EscapedName": {
+  "lean": {
+   "4.33.1": [
+    "ordinary"
+   ],
+   "4.36.0": [
+    "ordinary"
+   ]
+  },
+  "want": [
+   "ordinary"
+  ],
+  "note": "= Lean"
+ },
+ "EvalCommand": {
+  "lean": {
+   "4.33.1": [
+    "t"
+   ],
+   "4.36.0": [
+    "t"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "#eval runs code -> refused"
+ },
+ "FractionInString": {
+  "lean": {
+   "4.33.1": [
+    "t"
+   ],
+   "4.36.0": [
+    "t"
+   ]
+  },
+  "want": [
+   "t"
+  ],
+  "note": "= Lean"
+ },
+ "GuardedCommand": {
+  "lean": {
+   "4.33.1": [],
+   "4.36.0": []
+  },
+  "want": "UNCLEAR",
+  "note": "#guard_msgs can turn a failing declaration into an accepted file -> refused"
+ },
+ "InstanceProof": {
+  "lean": {
+   "4.33.1": [
+    "inst"
+   ],
+   "4.36.0": [
+    "inst"
+   ]
+  },
+  "want": [
+   null
+  ],
+  "note": "every instance counts WITHOUT a name (a data instance is a definition; the source cannot tell) -> inference NO-VERDICT"
+ },
+ "Literals": {
+  "lean": {
+   "4.33.1": [
+    "α₁"
+   ],
+   "4.36.0": [
+    "α₁"
+   ]
+  },
+  "want": [
+   "α₁"
+  ],
+  "note": "= Lean"
+ },
+ "MacroCommand": {
+  "lean": {
+   "4.33.1": [
+    "t._@.evidence.cases.MacroCommand.3018538867._hygCtx._hyg.3"
+   ],
+   "4.36.0": [
+    "t._@.evidence.cases.MacroCommand.3018538867._hygCtx._hyg.3"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "macro defines syntax (hygienic generated name) -> refused"
+ },
+ "MathlibAdditive": {
+  "lean": {
+   "4.33.1": [
+    "addIdentity",
+    "mulIdentity"
+   ],
+   "4.36.0": "SKIP"
+  },
+  "want": "UNCLEAR",
+  "note": "to_additive generates undotted theorems -> refused"
+ },
+ "MathlibIrreducible": {
+  "lean": {
+   "4.33.1": [
+    "n_def"
+   ],
+   "4.36.0": "SKIP"
+  },
+  "want": "UNCLEAR",
+  "note": "irreducible_def generates an undotted theorem -> refused"
+ },
+ "MathlibLemma": {
+  "lean": {
+   "4.33.1": [
+    "t"
+   ],
+   "4.36.0": "SKIP"
+  },
+  "want": [
+   "t"
+  ],
+  "note": "= Lean"
+ },
+ "ModulePrivate": {
+  "lean": {
+   "4.33.1": [
+    "_private.evidence.cases.ModulePrivate.0.t"
+   ],
+   "4.36.0": [
+    "_private.evidence.cases.ModulePrivate.0.t"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "`module` file: names private by default -> refused"
+ },
+ "MutualTheorems": {
+  "lean": {
+   "4.33.1": [
+    "left",
+    "right"
+   ],
+   "4.36.0": [
+    "left",
+    "right"
+   ]
+  },
+  "want": [
+   "left",
+   "right"
+  ],
+  "note": "= Lean"
+ },
+ "NamespaceName": {
+  "lean": {
+   "4.33.1": [
+    "N.t"
+   ],
+   "4.36.0": [
+    "N.t"
+   ]
+  },
+  "want": [
+   "N.t"
+  ],
+  "note": "= Lean"
+ },
+ "OrdinaryBinder": {
+  "lean": {
+   "4.33.1": [
+    "t"
+   ],
+   "4.36.0": [
+    "t"
+   ]
+  },
+  "want": [
+   "t"
+  ],
+  "note": "= Lean"
+ },
+ "PlainBrace": {
+  "lean": {
+   "4.33.1": [
+    "t"
+   ],
+   "4.36.0": [
+    "t"
+   ]
+  },
+  "want": [
+   "t"
+  ],
+  "note": "= Lean"
+ },
+ "PlainString": {
+  "lean": {
+   "4.33.1": [],
+   "4.36.0": []
+  },
+  "want": [],
+  "note": "= Lean"
+ },
+ "PrivateName": {
+  "lean": {
+   "4.33.1": [
+    "_private.evidence.cases.PrivateName.0.t"
+   ],
+   "4.36.0": [
+    "_private.evidence.cases.PrivateName.0.t"
+   ]
+  },
+  "want": [
+   null
+  ],
+  "note": "_private.evidence.cases.PrivateName.0.t: private kernel name not computable from the source -> null (inference: NO-VERDICT)"
+ },
+ "RootName": {
+  "lean": {
+   "4.33.1": [
+    "t"
+   ],
+   "4.36.0": [
+    "t"
+   ]
+  },
+  "want": [
+   "t"
+  ],
+  "note": "= Lean"
+ },
+ "ScopedTheorems": {
+  "lean": {
+   "4.33.1": [
+    "N.t",
+    "u"
+   ],
+   "4.36.0": [
+    "N.t",
+    "u"
+   ]
+  },
+  "want": [
+   "N.t",
+   "u"
+  ],
+  "note": "= Lean"
+ },
+ "SimpAttribute": {
+  "lean": {
+   "4.33.1": [
+    "t",
+    "t._simp_1"
+   ],
+   "4.36.0": [
+    "t",
+    "t._simp_1"
+   ]
+  },
+  "want": [
+   "t"
+  ],
+  "note": "t._simp_1: auxiliary theorem under a DOTTED generated name, never an inference target -> not listed"
+ },
+ "SyntaxCommands": {
+  "lean": {
+   "4.33.1": [
+    "t"
+   ],
+   "4.36.0": [
+    "t"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "notation / syntax -> refused"
+ },
+ "Tab": {
+  "lean": {
+   "4.33.1": "ERROR",
+   "4.36.0": "ERROR"
+  },
+  "want": "UNCLEAR",
+  "note": "Lean rejects the file (tab)"
+ },
+ "TabInLiteral": {
+  "lean": {
+   "4.33.1": [
+    "t"
+   ],
+   "4.36.0": [
+    "t"
+   ]
+  },
+  "want": [
+   "t"
+  ],
+  "note": "= Lean"
+ },
+ "WhereHelper": {
+  "lean": {
+   "4.33.1": [
+    "t",
+    "t.helper"
+   ],
+   "4.36.0": [
+    "t",
+    "t.helper"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "a `where` clause of a theorem declares t.helper (a theorem here) -> refused"
+ },
+ "WrappedTheorem": {
+  "lean": {
+   "4.33.1": [
+    "t"
+   ],
+   "4.36.0": [
+    "t"
+   ]
+  },
+  "want": [
+   "t"
+  ],
+  "note": "= Lean"
+ }
+}

@@ -1,0 +1,10 @@
+name = "mini"
+srcDir = "src"
+defaultTargets = ["Main"]
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]
+globs = ["Main", "Tac"]
+# compile the project's own modules (its tactic) to native code and load it when elaborating importers
+precompileModules = true

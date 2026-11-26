@@ -1,0 +1,15 @@
+{"threads_cases": [
+  {"name": "rhmid-honest", "export": "/scratch/bench-inputs/rh-mid/ref/solution.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export", "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json"},
+  {"name": "rhmid-M1-first-thm", "export": "/scratch/sound-gates-work/midmut/midM1.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export", "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json"},
+  {"name": "rhmid-M2-last-thm", "export": "/scratch/sound-gates-work/midmut/midM2.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export", "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json"},
+  {"name": "cmpx-reject-stmt-true", "export": "/scratch/bench-inputs/cmpx/reject-stmt-true.ndjson",
+   "challenge": "/scratch/bench-inputs/rh-miniF/challenge/challenge.export", "config": "/scratch/bench-inputs/rh-miniF/challenge/comparator.json"},
+  {"name": "cmpx-reject-illegal-axiom", "export": "/scratch/bench-inputs/cmpx/reject-illegal-axiom.ndjson",
+   "challenge": "/scratch/bench-inputs/rh-miniF/challenge/challenge.export", "config": "/scratch/bench-inputs/rh-miniF/challenge/comparator.json"},
+  {"name": "cmpx-accept-base", "export": "/scratch/bench-inputs/cmpx/accept-base.ndjson",
+   "challenge": "/scratch/bench-inputs/rh-miniF/challenge/challenge.export", "config": "/scratch/bench-inputs/rh-miniF/challenge/comparator.json"}
+ ],
+ "threads_list": [1, 32, 128, 255, 256, 384]}

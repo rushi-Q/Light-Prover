@@ -1,0 +1,150 @@
+--- a/src/induct.rs
++++ b/src/induct.rs
+@@ -527,10 +527,10 @@
+                                     ds.push(self.thunk(a, e, ls)?);
+                                 }
+                                 self.nested_found_vals(ind, ds, jllr, jrow, &jall)?;
+-                                // the remaining arguments (indices) are scanned like any subterm
+-                                for &a in &args[na..] {
+-                                    self.scan_nested(ind, a, env, ls, depth, dummy)?;
+-                                }
++                                // Y3-1 fix: the remaining arguments (indices) are NOT scanned. Lean's replace_if_nested
++                                // replaces `I As is` by `auxI As is` and `replace` does not descend into its result, so
++                                // nested occurrences inside the indices are not eliminated (the CONST branch below does
++                                // the same); scanning them added auxiliary types Lean does not have
+                                 return Ok(());
+                             }
+                         }
+@@ -651,6 +651,16 @@
+                 }
+             }
+             if same {
++                // Y3-1 fix (letE.nondep): Lean finds the earlier auxiliary type with Expr == (expr_eq_fn), which
++                // compares a let's nondep flag; the packed format carries no nondep, so two occurrences that differ
++                // only there look equal here and would share one auxiliary type where Lean has two. If the export has
++                // any `"nondep":true` let (the official exporters write false) and the parameters contain a let: no
++                // verdict (decline), never a merge Lean would not make
++                if susz::pack::saw_nondep_let() && self.vals_have_let(&ds)? {
++                    return decline(
++                        "a nested occurrence equals an earlier one up to a let in its parameters (letE.nondep is not in the packed export; Lean's == compares it): not decided",
++                    );
++                }
+                 return Ok(());
+             }
+         }
+@@ -678,6 +688,62 @@
+         Ok(())
+     }
+ 
++    /// Y3-1: whether any of the values (their terms, followed through the
++    /// environments' values) contains a let node. Each (term, env) pair and
++    /// each value is visited once.
++    fn vals_have_let(&mut self, vs: &[V]) -> R<bool> {
++        let mut seen_t: rustc_hash::FxHashSet<(u32, u32)> = Default::default();
++        let mut seen_v: rustc_hash::FxHashSet<V> = Default::default();
++        let mut todo_v: Vec<V> = vs.to_vec();
++        let mut todo_t: Vec<(u32, u32, u32)> = Vec::new();
++        loop {
++            self.tick()?;
++            if let Some((t, e, depth)) = todo_t.pop() {
++                if !seen_t.insert((t, e)) {
++                    continue;
++                }
++                match self.tk(t) {
++                    LET => return Ok(true),
++                    BVAR => {
++                        let i = self.tp(t);
++                        if i >= depth {
++                            todo_v.push(self.env_get(e, i - depth)?);
++                        }
++                    }
++                    APP => {
++                        todo_t.push((self.ta(t), e, depth));
++                        todo_t.push((self.tb(t), e, depth));
++                    }
++                    PROJ => todo_t.push((self.ta(t), e, depth)),
++                    k if is_lam(k) || is_pi(k) => {
++                        todo_t.push((self.ta(t), e, depth));
++                        todo_t.push((self.tb(t), e, depth + 1));
++                    }
++                    _ => {}
++                }
++                continue;
++            }
++            let Some(v) = todo_v.pop() else { return Ok(false) };
++            if !seen_v.insert(v) {
++                continue;
++            }
++            match self.val(v) {
++                Val::Thunk { term, env, .. } | Val::Clo { term, env, .. } | Val::CloI { term, env, .. } => todo_t.push((term, env, 0)),
++                Val::Sort(_) | Val::Lit(_) => {}
++                Val::Neu { head, spine } => {
++                    if let Head::Stuck(x) = head {
++                        todo_v.push(x);
++                    }
++                    for e in self.spine(spine) {
++                        if e & 0x8000_0000 == 0 {
++                            todo_v.push(e);
++                        }
++                    }
++                }
++            }
++        }
++    }
++
+     /// K02: whether term `t` (MAIN) mentions a constant or a projection
+     /// structure whose name has `_nested` as its first component (Lean's
+     /// `is_prefix_of(_nested, n)`), anywhere (Lean's `find`). Shared
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -674,6 +674,8 @@
+             },
+         }
+     } else {
++        // Y3-1: a .susz file does not record whether the source export had nondep lets: assume it may have
++        susz::pack::ANY_NONDEP_LET.store(true, Ordering::SeqCst);
+         match unsafe { susz::open_mmap(path) } {
+             Ok(m) => {
+                 let m: &'static susz::Mapped = Box::leak(Box::new(m));
+--- a/vendor/susz/src/pack/mod.rs
++++ b/vendor/susz/src/pack/mod.rs
+@@ -13,6 +13,16 @@
+ 
+ use std::fmt;
+ 
++/// gruszka Y3-1: set when a parsed `letE` record has `"nondep":true`. The packed format carries no nondep (every let is
++/// written as tag 13), so a consumer that compares expressions as Lean's `==` does (which compares nondep) learns here
++/// whether two lets that look equal in the packed form may differ in the export. Set by both parsers (lines.rs fast path,
++/// pk.rs JSON path) on any thread; never cleared within a process.
++pub static ANY_NONDEP_LET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++/// Whether a `letE` record with `"nondep":true` was packed in this process (see `ANY_NONDEP_LET`).
++pub fn saw_nondep_let() -> bool {
++    ANY_NONDEP_LET.load(std::sync::atomic::Ordering::SeqCst)
++}
++
+ /// Whose fault a packing failure is.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ pub enum Fault {
+--- a/vendor/susz/src/pack/lines.rs
++++ b/vendor/susz/src/pack/lines.rs
+@@ -824,6 +824,7 @@
+             let q = if lit(b, q, b",\"nondep\":false,\"type\":") {
+                 q + 23
+             } else if lit(b, q, b",\"nondep\":true,\"type\":") {
++                super::ANY_NONDEP_LET.store(true, std::sync::atomic::Ordering::SeqCst);
+                 q + 22
+             } else {
+                 return Ok(None);
+--- a/vendor/susz/src/pack/pk.rs
++++ b/vendor/susz/src/pack/pk.rs
+@@ -912,7 +912,9 @@
+         if json::has(fs, "letE") {
+             let o = json::obj(fs, "letE")?;
+             json::exact(o, &["body", "name", "nondep", "type", "value"])?;
+-            json::boolean(o, "nondep")?;
++            if json::boolean(o, "nondep")? {
++                super::ANY_NONDEP_LET.store(true, std::sync::atomic::Ordering::SeqCst);
++            }
+             return self.let_e(
+                 ie,
+                 json::int(o, "name")?,

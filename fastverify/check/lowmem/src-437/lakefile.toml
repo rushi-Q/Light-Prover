@@ -1,0 +1,33 @@
+name = "pchk"
+defaultTargets = ["pleanchecker", "ccmp", "ccmp-lowmem"]
+
+[[lean_exe]]
+name = "pleanchecker"
+root = "Main"
+
+[[lean_lib]]
+name = "PChk"
+
+[[lean_lib]]
+name = "CCmp"
+
+[[lean_exe]]
+name = "ccmp"
+root = "CCmpMain"
+
+[[lean_lib]]
+name = "LowMemParse"
+
+[[lean_lib]]
+name = "CCmpLowMem"
+
+[[lean_exe]]
+name = "ccmp-lowmem"
+root = "CCmpLowMemMain"
+moreLinkArgs = ["lowmem_arena.o"]
+
+[[lean_lib]]
+name = "FastParse"
+
+[[lean_lib]]
+name = "ParAxioms"

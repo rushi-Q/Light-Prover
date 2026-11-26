@@ -1,0 +1,6 @@
+name = "dupscan"
+defaultTargets = ["dupscan"]
+
+[[lean_exe]]
+name = "dupscan"
+root = "Main"

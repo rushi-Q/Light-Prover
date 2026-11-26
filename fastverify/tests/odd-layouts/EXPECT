@@ -1,0 +1,7 @@
+# case official_rc official_sha16 (live official run; proj-crlf: the official build rejects the BOM/CRLF file)
+proj-symlink-file 0 95eab0c9b79ce45f
+proj-symlink-dir 0 95eab0c9b79ce45f
+proj-unicode 0 95eab0c9b79ce45f
+proj-guillemet 0 95eab0c9b79ce45f
+proj-symlink-outside 0 95eab0c9b79ce45f
+proj-crlf 1 -

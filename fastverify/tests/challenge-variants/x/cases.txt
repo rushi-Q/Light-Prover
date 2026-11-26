@@ -1,0 +1,13 @@
+p-en-honest c-enable-nanoda
+p-en-sorry c-enable-nanoda
+p-do-honest c-defs-only
+p-do-type c-defs-only
+p-do-sorry c-defs-only
+p-nm-honest c-nested-module
+p-nm-stmt c-nested-module
+p-esc-honest c-escaped
+p-esc-sorry c-escaped
+p-uni-honest c-unicode
+p-nq-honest c-no-quot
+p-nq-funext c-no-quot
+p-sa-sorry c-sorryax

@@ -1,0 +1,7 @@
+10,11c10,12
+< run() {  # $1 = exporter path inside log/bin, $2 = tag
+<   "$D/sbx.sh" "$W/proj" "$W/log" "$TCW" -- /bin/bash -c "cd $W/proj && ${LEAN4EXPORT_EXPR_ESTIMATE_LOG2:+LEAN4EXPORT_EXPR_ESTIMATE_LOG2=$LEAN4EXPORT_EXPR_ESTIMATE_LOG2} LEAN_PATH='$LP' /usr/bin/time -v $W/log/bin/$1 Main -- \$(cat $W/log/export-targets.txt) > $W/log/solution.export 2> $W/log/export.$2.time"
+---
+> run() {  # $1 = exporter path inside log/bin, $2 = tag   (fix-059: paths passed as positional args, never interpolated)
+>   "$D/sbx.sh" "$W/proj" "$W/log" "$TCW" -- /usr/bin/env ${LEAN4EXPORT_EXPR_ESTIMATE_LOG2:+LEAN4EXPORT_EXPR_ESTIMATE_LOG2=$LEAN4EXPORT_EXPR_ESTIMATE_LOG2} \
+>     /bin/bash -c 'cd "$1/proj" && LEAN_PATH="$2" /usr/bin/time -v "$1/log/bin/$3" Main -- $(cat "$1/log/export-targets.txt") > "$1/log/solution.export" 2> "$1/log/export.$4.time"' _ "$W" "$LP" "$1" "$2"

@@ -1,0 +1,10 @@
+mid-honest-nosnap	0	${FV_BENCH_INPUTS}/rh-mid/ref/solution.export	${FV_BENCH_INPUTS}/rh-mid/challenge/challenge.export	${FV_BENCH_INPUTS}/rh-mid/challenge/comparator.json	-
+mid-honest-selfsnap	0	${FV_BENCH_INPUTS}/rh-mid/ref/solution.export	${FV_BENCH_INPUTS}/rh-mid/challenge/challenge.export	${FV_BENCH_INPUTS}/rh-mid/challenge/comparator.json	${FV_BENCH_INPUTS}/rh-mid/ref/solution.export
+mid-M1-snapH	1	${OVERLAP_INPUTS}/midmut/midM1.export	${FV_BENCH_INPUTS}/rh-mid/challenge/challenge.export	${FV_BENCH_INPUTS}/rh-mid/challenge/comparator.json	${FV_BENCH_INPUTS}/rh-mid/ref/solution.export
+mid-M2-snapH	1	${OVERLAP_INPUTS}/midmut/midM2.export	${FV_BENCH_INPUTS}/rh-mid/challenge/challenge.export	${FV_BENCH_INPUTS}/rh-mid/challenge/comparator.json	${FV_BENCH_INPUTS}/rh-mid/ref/solution.export
+mid-honest-snapM1	0	${FV_BENCH_INPUTS}/rh-mid/ref/solution.export	${FV_BENCH_INPUTS}/rh-mid/challenge/challenge.export	${FV_BENCH_INPUTS}/rh-mid/challenge/comparator.json	${OVERLAP_INPUTS}/midmut/midM1.export
+mid-honest-snapsS1S2	0	${FV_BENCH_INPUTS}/rh-mid/ref/solution.export	${FV_BENCH_INPUTS}/rh-mid/challenge/challenge.export	${FV_BENCH_INPUTS}/rh-mid/challenge/comparator.json	${OVERLAP_INPUTS}/mid/s1.export,${OVERLAP_INPUTS}/mid/s2.export
+mid-M1-snapsS1S2	1	${OVERLAP_INPUTS}/midmut/midM1.export	${FV_BENCH_INPUTS}/rh-mid/challenge/challenge.export	${FV_BENCH_INPUTS}/rh-mid/challenge/comparator.json	${OVERLAP_INPUTS}/mid/s1.export,${OVERLAP_INPUTS}/mid/s2.export
+cmpx-stmt-true-snapbase	1	${OVERLAP_INPUTS}/cmpx/reject-stmt-true.ndjson	${FV_BENCH_INPUTS}/rh-miniF/challenge/challenge.export	${FV_BENCH_INPUTS}/rh-miniF/challenge/comparator.json	${OVERLAP_INPUTS}/cmpx/accept-base.ndjson
+cmpx-illegal-axiom-snapbase	1	${OVERLAP_INPUTS}/cmpx/reject-illegal-axiom.ndjson	${FV_BENCH_INPUTS}/rh-miniF/challenge/challenge.export	${FV_BENCH_INPUTS}/rh-miniF/challenge/comparator.json	${OVERLAP_INPUTS}/cmpx/accept-base.ndjson
+cmpx-accept-base-selfsnap	0	${OVERLAP_INPUTS}/cmpx/accept-base.ndjson	${FV_BENCH_INPUTS}/rh-miniF/challenge/challenge.export	${FV_BENCH_INPUTS}/rh-miniF/challenge/comparator.json	${OVERLAP_INPUTS}/cmpx/accept-base.ndjson

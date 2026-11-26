@@ -1,0 +1,9 @@
+155f81fe393dd5a3a190cbcaa8a06f64146ba7b5a95fc2eff123ce78738c114b  ./chal/Challenge.lean
+edb420ac9bb3bf9c5a3e8d82b5dcb48965800e01e90848041acac651193a73f0  ./chal/comparator.json
+e754e8cf028ce3d8c16a503a2a1d45decdb59621879b41eb7162cee3816ba9b6  ./chal/lake-manifest.json
+2d9f7a0cd1a0cb5b0b05ccf04fa7a47b9a1cae7f72761e56726c2605fcaeb347  ./chal/lakefile.toml
+3aac669c7a910ec2389f4e4f921b605adf6ebf2d1e0c9b9cd0be4d33f3f5db71  ./chal/lean-toolchain
+532dab94fca36885714668cc33acd269a965dc9b32d517141ded6d8172b0f0a4  ./proj/Solution.lean
+e79e649ada2d62e5b641bc100611a657ff247e410802eeefd125e10c2bb57d59  ./proj/lake-manifest.json
+4c52bf37709ce33a940055df5e5dc8e978eb840a1f69b80545239f4d13615f9a  ./proj/lakefile.toml
+3aac669c7a910ec2389f4e4f921b605adf6ebf2d1e0c9b9cd0be4d33f3f5db71  ./proj/lean-toolchain

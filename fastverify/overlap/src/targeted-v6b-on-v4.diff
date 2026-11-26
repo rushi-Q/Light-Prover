@@ -1,0 +1,91 @@
+diff --git a/Main.lean b/Main.lean
+index a700105..e2e3de2 100644
+--- a/Main.lean
++++ b/Main.lean
+@@ -297,7 +297,7 @@ unsafe def incremental (dir? : Option String) (silent verbose : Bool) (nthreads
+         -- SUCCEEDED (waited for after the replay); in every other case (a skipped check failed, the replay did not
+         -- accept) the verdict is the one of the unchanged checkParsed of B without skips.
+         let tv ← IO.monoNanosNow
+-        let skip ← try PChk.Incr.verifiedTargets tenv tadj tchecks m nthreads verbose
++        let skip ← try PChk.Incr.verifiedTargets tenv tadj tdone tchecks m nthreads verbose
+           catch e =>
+             IO.eprintln s!"[incr] targeted final: verification failed ({e}); nothing skipped"
+             pure {}
+diff --git a/PChk/Incr.lean b/PChk/Incr.lean
+index 603ad4b..d0d2b77 100644
+--- a/PChk/Incr.lean
++++ b/PChk/Incr.lean
+@@ -484,22 +484,16 @@ are never replaced). The traversal uses `E`'s cached adjacency: for a constant w
+ Whether the check itself succeeded is NOT decided here: the caller must wait for it before it may report an accept.
+ Cost: one sequential pass over the union of the candidates' closures (cached adjacency, hash sets), the `==`
+ comparisons of that union in parallel, then one traversal per target (parallel). -/
+-def verifiedTargets (env : Kernel.Environment) (adj : Adj) (cands : Array TargetCheck) (m : Std.HashMap Name ConstantInfo)
+-    (nthreads : Nat) (verbose := false) : IO NameSet := do
++def verifiedTargets (env : Kernel.Environment) (adj : Adj) (closed : Std.HashSet Name) (cands : Array TargetCheck)
++    (m : Std.HashMap Name ConstantInfo) (nthreads : Nat) (verbose := false) : IO NameSet := do
+   if cands.isEmpty then return {}
+-  -- 1. union of the candidates' closures in E
+-  let mut seen : Std.HashSet Name := {}
+-  let mut uarr : Array Name := #[]
+-  let mut stack : Array Name := #[]
+-  for t in cands do stack := stack ++ (refsOf t.ci).toArray
+-  while !stack.isEmpty do
+-    let c := stack.back!
+-    stack := stack.pop
+-    if seen.contains c then continue
+-    seen := seen.insert c
+-    uarr := uarr.push c
+-    if let some rs := adjOf env adj c then
+-      for r in rs do stack := stack.push r
++  let tA ← IO.monoNanosNow
++  -- 1. (v6) the union of the candidates' closures in E is already known: `closed` = the closure memo of `startReady`
++  -- (every name in it is present in E since it was added, and its adjacency is inside it: closed under `adjOf`), which
++  -- contains the closure of every started target (its closure test succeeded on envD, adding what it visited)
++  let seen : Std.HashSet Name := closed
++  let uarr : Array Name := closed.toArray
++  let tB ← IO.monoNanosNow
+   -- 2. ok = in m, in E, equal (parallel)
+   let okOf : Name → Bool := fun c =>
+     match m[c]?, env.find? c with
+@@ -518,19 +512,27 @@ def verifiedTargets (env : Kernel.Environment) (adj : Adj) (cands : Array Target
+   for part in parts do
+     for (_, bad) in part do
+       for c in bad do notOk := notOk.insert c
+-  -- 3. per target (parallel)
++  let tC ← IO.monoNanosNow
++  -- 3. per target (parallel). (v6) If every name of `closed` is equal in B and E, each candidate's B-closure equals its
++  -- E-closure (equal constants have equal refsOf, `closed` is closed under E's adjacency) and lies inside `closed`, whose
++  -- names were present in envD when d started (d's closure test ran on envD): conditions (3) hold without a traversal.
++  let allOk := notOk.isEmpty
+   let one (t : TargetCheck) : Option String := Id.run do
+     let some bci := m[t.name]? | return some "not in the final export"
+     unless bci == t.ci do return some "final export's version differs from the checked one"
+-    match env.find? t.name with
+-    | some eci => unless eci == bci do return some "E's version differs"
+-    | none => return some "not in E"
++    -- (v6b) E[d] is ci_d by construction (startReady inserts exactly ci_d; entries are never replaced), so only its
++    -- presence is tested here: comparing it again would re-traverse the (often huge) target value for nothing
++    if (env.find? t.name).isNone then return some "not in E"
+     for p in implicitNames do
+       match t.envD.find? p, m[p]? with
+       | none, none => pure ()
+       | some a, some b => unless a == b do return some s!"implicit name {p} differs"
+       | some _, none => return some s!"implicit name {p} in envD, not in the final export"
+       | none, some _ => return some s!"implicit name {p} absent from envD"
++    if allOk then
++      for r in (adj[t.name]?.getD (refsOf t.ci).toArray) do
++        unless seen.contains r do return some s!"closure constant {r} not in the closure memo (internal)"
++      return none
+     let mut vis : Std.HashSet Name := {}
+     let mut stack : Array Name := (refsOf t.ci).toArray
+     while !stack.isEmpty do
+@@ -553,6 +555,9 @@ def verifiedTargets (env : Kernel.Environment) (adj : Adj) (cands : Array Target
+     match tk.get with
+     | (n, none) => res := res.insert n
+     | (n, some why) => if verbose then IO.eprintln s!"[incr] target {n} not skipped: {why}"
++  let tD ← IO.monoNanosNow
++  if verbose then
++    IO.eprintln s!"[incr] verification phases: union (memo) {(tB - tA) / 1000000} ms ({uarr.size} names), == {(tC - tB) / 1000000} ms ({notOk.size} not ok), per-target {(tD - tC) / 1000000} ms ({if allOk then "no traversal" else "traversals"})"
+   return res
+ 
+ end PChk.Incr

@@ -1,0 +1,7 @@
+name = "mi\u006Ei"
+srcDir = "src"
+defaultTargets = ["Main"]
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]

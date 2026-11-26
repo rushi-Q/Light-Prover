@@ -1,0 +1,34 @@
+--- a/src/env.rs
++++ b/src/env.rs
+@@ -214,6 +214,10 @@
+         *self.big.lock().unwrap() = Some(b);
+         Ok(workers)
+     }
++    /// D12: reset slab allocation counter between runs (single-threaded).
++    pub fn reset_next(&self) {
++        self.next.store(0, std::sync::atomic::Ordering::Relaxed);
++    }
+     /// One block arena (a slab of the layout).
+     pub fn take(&self) -> Cols {
+         use std::sync::atomic::Ordering::Relaxed;
+@@ -450,6 +454,11 @@
+         }
+     }
+     /// Bytes of pages possibly held (high water of both columns).
++    /// D12: expand MAIN capacity inside the already-reserved REGION address space.
++    pub fn extend_cap(&mut self, extra: usize) {
++        let want = (self.len + extra).min(ID_LIMIT as usize / 2);
++        if want > self.cap { self.cap = want; }
++    }
+     pub fn bytes(&self) -> usize {
+         24 * self.hw.max(self.len)
+     }
+@@ -682,7 +691,7 @@
+ /// let and literal indices already final): the range and used mask of each,
+ /// in id order, as `push_expr` computes them. Returns whether some range
+ /// reached 65535 (`too_deep`).
+-fn fill_main(main: &Cols, lets: &[(u32, u32)], from: usize, to: usize) -> bool {
++pub fn fill_main(main: &Cols, lets: &[(u32, u32)], from: usize, to: usize) -> bool {
+     let reg = region();
+     let (np, up, hp) = (main.n_ptr, main.u_ptr, main.h_ptr);
+     let mut deep = false;

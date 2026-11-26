@@ -1,0 +1,23 @@
+#!/bin/bash -p
+# fv — Ergonomic daily production CLI for fastverify.
+# `-p` = bash ignores BASH_ENV/ENV/CDPATH/SHELLOPTS and imports no shell functions from the environment, and the tools
+# used before the exec are called by absolute path, so nothing of the caller's environment runs or redirects here.
+# Scrub caller environment with /usr/bin/env -i (matching bin/fastverify) before invoking fv_cli.py.
+# `bash bin/fv` ignores the `-p` above and imports the caller's exported shell
+# functions (an exported `exec` function used to end this script with status 0). So: the first statement is a plain
+# assignment that turns on POSIX mode (POSIX special builtins - `exec` - are then found before any function; an assignment is
+# not a command and cannot be replaced), the package root is computed with absolute-path tools only (no cd / pwd), and the
+# script `exec`s, so the started PID stays the Python process (a SIGTERM to it reaches bin/fv itself, never an outer shell).
+# What this defends is the caller's EXPORTED functions only (bash refuses to import one whose name contains '/', so the
+# absolute paths cannot be shadowed that way). Not defendable from inside the file: `bash bin/fv` with BASH_ENV (its file
+# runs before line 1 and can define anything, even a function named /usr/bin/env) or SHELLOPTS. Run `fastverify/bin/fv`
+# itself, never `bash fastverify/bin/fv`.
+POSIXLY_CORRECT=y
+D=$(/usr/bin/dirname "$(/usr/bin/dirname "$(/usr/bin/readlink -f "$0")")")
+# FV_CLI_ROOTS (documented in tools/cli/README.md: trusted anchors of the local path policy) and
+# FV_EXPERIMENTAL_CI (opts in to the EXPERIMENTAL CI gate) are kept - as expansions, not `[ ... ]` tests (builtins a function
+# could replace); fv_cli.py checks FV_EXPERIMENTAL_CI == "1" itself
+exec /usr/bin/env -i HOME="${HOME:-/tmp}" USER="${USER:-}" TMPDIR="${TMPDIR:-/tmp}" \
+  PATH="/usr/local/bin:/usr/bin:/bin" LANG=C.UTF-8 ${FV_CLI_ROOTS:+"FV_CLI_ROOTS=$FV_CLI_ROOTS"} \
+  ${FV_EXPERIMENTAL_CI:+"FV_EXPERIMENTAL_CI=$FV_EXPERIMENTAL_CI"} \
+  /usr/bin/python3 -I "$D/tools/cli/fv_cli.py" "$@"

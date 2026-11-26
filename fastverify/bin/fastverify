@@ -1,0 +1,16 @@
+#!/bin/bash -p
+# fastverify PROJECT CHALLENGE OUT [--preset sound|sound-auto|notary|reference|fastest] [--check CS,CN,C0,C3,C4] [--threads N] ...
+# Complete verification of a Lean 4 project against a clean challenge; see ../README.md. Runs the orchestrator under
+# `env -i` (no inherited environment can influence a verdict: regression test 016) with the system python in isolated mode.
+# `-p` = bash ignores BASH_ENV/ENV/CDPATH and imports no shell functions from the environment, and the tools
+# used before the exec are called by absolute path, so nothing of the caller's environment runs or redirects here.
+# `bash bin/fastverify` ignores the `-p` above and imports the caller's exported
+# shell functions. The first statement is a plain assignment that turns on POSIX mode (POSIX special builtins - `exec` - are
+# then found before any function), the package root is computed with absolute-path tools only, and the script `exec`s: the
+# started PID is the orchestrator itself, whose SIGTERM/SIGINT handler stops every stage and records the interruption.
+# This defends against the caller's EXPORTED functions only (bash refuses to import one whose name contains '/'). `bash
+# bin/fastverify` with BASH_ENV (its file runs before line 1 and can define anything, even a function named /usr/bin/env) or
+# SHELLOPTS cannot be defended from inside the file: run the file itself.
+POSIXLY_CORRECT=y
+D=$(/usr/bin/dirname "$(/usr/bin/dirname "$(/usr/bin/readlink -f "$0")")")
+exec /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 /usr/bin/python3 -I "$D/lib/fastverify.py" "$@"

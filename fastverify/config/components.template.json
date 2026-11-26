@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "comment": "TEMPLATE of config/components.json (machine-independent). tools/configure.py expands ${ELAN_HOME} (elan home holding the official toolchains), ${LIGHT_LEAN} (the directory that contains env/tools/lean4export, default: the package's parent) and ${FASTVERIFY} into config/components.json and checks that every pinned file exists with its sha256. Pinned components of the fastverify package. Every binary is verified (sha256) and must start before a run; a mismatch or a binary that cannot start makes the run refuse (exit 2). Lean toolchains are the OFFICIAL release binaries (elan). Stage scripts are relative to the package root.",
+  "lean_toolchains": {
+    "leanprover/lean4:v4.33.1": {
+      "prefix": "${ELAN_HOME}/toolchains/leanprover--lean4---v4.33.1",
+      "lean_version": "Lean (version 4.33.1, x86_64-unknown-linux-gnu, commit 819816b2e0a3bf405af45ae5c7af2491d8f5bee6, Release)",
+      "sha256": {
+        "bin/lean": "e8baaa71855a616dc351028f3ad2200051b0671f423a1696a100e809302d5550",
+        "bin/lake": "60330ab6f07dce20f3fa9ebb08e8b984ea9549eac172afeb15d9d2227060e2b3"
+      },
+      "official_lean4export": {
+        "path": "${LIGHT_LEAN}/env/tools/lean4export/.lake/build/bin/lean4export",
+        "version": "lean4export v4.33.0 tag (commit 15f6055), built with Lake from env/tools/lean4export",
+        "sha256": "805ab4cc6a88dcef109644d201c3142261f524aecaf58b04913a9f029e21e9b5"
+      }
+    },
+    "leanprover/lean4:v4.36.0": {
+      "prefix": "${ELAN_HOME}/toolchains/leanprover--lean4---v4.36.0",
+      "lean_version": "Lean (version 4.36.0, x86_64-unknown-linux-gnu, commit 611c117bfaf7b7ae1cfcf246ce6fba31e8f509e9, Release)",
+      "sha256": {
+        "bin/lean": "db7f559d05795e7af52e42bc966c90240a39dcb9712161c54c97afa546e20c00",
+        "bin/lake": "42678ccbc2605e2f892540dc7236e009fdd1224e823d104dfd72725d2f1a52d2"
+      },
+      "official_lean4export": {
+        "path": "${ELAN_HOME}/toolchains/leanprover--lean4---v4.36.0/bin/leanexport",
+        "version": "leanexport bundled with the official Lean 4.36.0 release (lean4export 3.1.0); the 4.36 lake comparator uses exactly this exporter",
+        "sha256": "8298d4412a1f8986b5dbfd1d9925211778d8d320fc47b72040c8fdfdd5b603d5"
+      },
+      "comment": "projects pinned to v4.36.0 are built by the official sandboxed lake build (build.sh declines: validated only for 4.33.1), exported by the release's leanexport (native exporter declines), checked like any other project; whole tree verified via toolchains/leanprover--lean4---v4.36.0.json"
+    }
+  },
+  "comparator": {
+    "prefix": "${ELAN_HOME}/toolchains/leanprover--lean4---v4.36.0",
+    "lean_version": "Lean (version 4.36.0, x86_64-unknown-linux-gnu, commit 611c117bfaf7b7ae1cfcf246ce6fba31e8f509e9, Release)",
+    "sha256": {
+      "bin/lake": "42678ccbc2605e2f892540dc7236e009fdd1224e823d104dfd72725d2f1a52d2",
+      "bin/lean": "db7f559d05795e7af52e42bc966c90240a39dcb9712161c54c97afa546e20c00",
+      "bin/leanchecker": "2b2ff08805ace61c935b023f8114ac3f7f1d3bc79cb4e8c47ef7801a5af58798",
+      "bin/nanoda_bin": "8241c5e6baa29490aa118d382f97961b208ae730fdb96545c2abed74c9ece5a8"
+    },
+    "id": "leanprover/lean4:v4.36.0"
+  },
+  "stages": {
+    "build_fast": "build/build.sh",
+    "build_official": "build/official-build.sh",
+    "export": "export/export.sh",
+    "check_official": "check/official/check.sh",
+    "checkB": "check/checkB/check-b.sh",
+    "prechk": "check/prechk/prechk.sh",
+    "checkSound": "check/sound/check-sound.sh",
+    "checkNotary": "check/notary/check-notary.sh"
+  },
+  "check_options": {
+    "C0": {
+      "script": "check/official/check.sh",
+      "args": [],
+      "what": "official Lean 4.36 lake comparator (THE verdict)"
+    },
+    "C3": {
+      "script": "check/checkB/check-b.sh",
+      "args": [],
+      "what": "dual independent kernels gruszka + nano-lean + kcompare"
+    },
+    "C4": {
+      "script": "check/checkB/check-b.sh",
+      "args": [
+        "--single"
+      ],
+      "what": "single independent kernel gruszka + kcompare - UNSAFE opt-in"
+    },
+    "CS": {
+      "script": "check/sound/check-sound.sh",
+      "args": [],
+      "what": "SOUND check (GOAL S1): ccmp official judge code + pleanchecker (official 4.36 kernel libs) + gruszka as second kernel via external_kernels; no prechk"
+    },
+    "CN": {
+      "script": "check/notary/check-notary.sh",
+      "args": [],
+      "what": "NOTARY check (additive): unmodified official Lean 4.36 release libs + runtime 3-leg canonical SHA-256 digest cross-check (ccmp-notary == pleanchecker-notary == gruszka-r7) + selectable vetted second kernels"
+    }
+  },
+  "build_options": {
+    "B0": "build/official-build.sh",
+    "B1": "build/build.sh",
+    "B2": "build/build.sh --preset B2",
+    "B3": "build/build.sh --preset B3 --unsafe LIST"
+  },
+  "export_options": {
+    "E0": "official lean4export (lib/fastverify.py, sandboxed)",
+    "E1": "export/export.sh"
+  }
+}

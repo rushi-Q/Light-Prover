@@ -1,0 +1,13 @@
+{
+ "challenge_module": "Challenge",
+ "solution_module": "VCVio",
+ "theorem_names": [
+  "PRFScheme.prf_implies_uf_cma"
+ ],
+ "definition_names": [],
+ "permitted_axioms": [
+  "propext",
+  "Quot.sound",
+  "Classical.choice"
+ ]
+}

@@ -1,0 +1,5 @@
+con-leche: stats: phases: parse 0.0s (index 0.0s), check 0.0s
+con-leche: stats: check pool: 0.000s wall, 4 workers, 12 records, busy 0.001s (49.1%); tail 0.000s after the last start, 4 busy then, 0.000s worker-time in it (23.4%)
+con-leche: stats: slowest checks: 0.000s inductive Nat (#1); 0.000s inductive Eq (#0); 0.000s inductive And (#9); 0.000s inductive Empty (#2); 0.000s inductive Bool (#10)
+con-leche: stats: peak RSS 0.02 GiB
+con-leche: invalid: type mismatch in definition badDef [at def badDef, fold position 11] (--verified) t=0.0s

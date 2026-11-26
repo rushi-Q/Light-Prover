@@ -1,0 +1,10 @@
+# case official_rc official_export_sha256[:16]  (from a live official run; matches the values recorded with the original repro)
+a 1 -
+b 0 2d2b9d83b47ef9ac
+c 0 afac90272d10b6b5
+d 0 62b8033f5ada5924
+e 0 62b8033f5ada5924
+f 0 afac90272d10b6b5
+g 0 25f132c1908181db
+h 0 62b8033f5ada5924
+i 1 -

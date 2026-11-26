@@ -1,0 +1,6 @@
+{"comment": "sound legs exactly as check-sound.sh runs them without --hints (empty hints file), with the pinned binaries of check/sound/pins.env: pleanchecker 53957eed (PGO/ThinLTO official v4.36.0 kernel libs) + gruszka ece04e74",
+ "lean": {"argv": ["/scratch/fastverify-next/sound/53957eed/pleanchecker", "-j{threads}", "-v", "--from-export", "{export}"],
+          "env": {"LEAN_ABORT_ON_PANIC": "1", "LEAN_NUM_THREADS": "{threads}", "LEAN_STACK_SIZE_KB": "917376",
+                  "PCHK_PRIO_FILE": "{here}/legs/empty.hints", "PCHK_SLOW_MS": "10000"}},
+ "k2": {"argv": ["/scratch/fastverify-next/gruszka/ece04e74/gruszka", "{export}", "{threads}"], "env": {}},
+ "ro": ["/scratch/fastverify-next", "{here}/legs/empty.hints", "$ELAN_HOME/toolchains/leanprover--lean4---v4.36.0"]}

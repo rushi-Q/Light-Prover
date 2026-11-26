@@ -1,0 +1,1 @@
+{"use_stdin":false,"export_file_path":"$LIGHT_LEAN/fastverify/tests/056-valid-project-using-a-numeric-projection/x/Main.export","permitted_axioms":["propext","Quot.sound","Classical.choice"],"unpermitted_axiom_hard_error":false,"num_threads":1,"nat_extension":true,"string_extension":true}

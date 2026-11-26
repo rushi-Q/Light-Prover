@@ -1,0 +1,4 @@
+name = "Main"
+defaultTargets = ["Main"]
+[[lean_lib]]
+name = "Main"

@@ -1,0 +1,5 @@
+con-leche: stats: phases: parse 0.0s (index 0.0s), check 0.0s
+con-leche: stats: check pool: 0.003s wall, 4 workers, 12 records, busy 0.006s (56.8%); tail 0.002s after the last start, 4 busy then, 0.004s worker-time in it (49.4%)
+con-leche: stats: slowest checks: 0.002s inductive Nat (#1); 0.002s inductive Eq (#0); 0.000s inductive Empty (#2); 0.000s inductive False (#3); 0.000s inductive And (#9)
+con-leche: stats: peak RSS 0.02 GiB
+con-leche: not implemented yet: non-standard axiom (aDepProp); con-leche does not support such axioms at the moment [at axiom aDepProp, fold position 11] (--verified) t=0.0s

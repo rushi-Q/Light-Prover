@@ -1,0 +1,4 @@
+#!/bin/bash
+# fastverify-mcp — Model Context Protocol (MCP) server for sound Lean 4 verification.
+D=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+exec /usr/bin/python3 -I "$D/mcp_server.py" "$@"

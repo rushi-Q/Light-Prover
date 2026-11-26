@@ -1,0 +1,7 @@
+{"mutants": [
+  {"name": "M1", "export": "/scratch/sound-gates-work/rh-mut/M1.export", "expect": "REJECTED"},
+  {"name": "M3", "export": "/scratch/sound-gates-work/rh-mut/M3.export", "expect": "REJECTED"},
+  {"name": "M4", "export": "/scratch/sound-gates-work/rh-mut/M4.export", "expect": "REJECTED"},
+  {"name": "honest-defaulthints", "export": "/scratch/sound-gates-work/rh/solution.export", "expect": "ACCEPTED"}],
+ "mutants_challenge": "$LIGHT_LEAN/verify/challenge/challenge.export",
+ "mutants_config": "$LIGHT_LEAN/verify/challenge/comparator.json"}

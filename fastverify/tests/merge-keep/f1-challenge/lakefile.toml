@@ -1,0 +1,13 @@
+name = "challenge"
+defaultTargets = ["Challenge"]
+
+[leanOptions]
+autoImplicit = false
+
+[[lean_lib]]
+name = "Challenge"
+
+[[lean_lib]]
+name = "T"
+globs = ["T.Base"]
+leanOptions = {maxHeartbeats = 300000}

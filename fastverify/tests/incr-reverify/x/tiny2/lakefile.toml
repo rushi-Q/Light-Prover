@@ -1,0 +1,9 @@
+name = "tiny"
+defaultTargets = ["Tiny", "Solution"]
+
+[[lean_lib]]
+name = "Tiny"
+globs = ["Tiny.+"]
+
+[[lean_lib]]
+name = "Solution"

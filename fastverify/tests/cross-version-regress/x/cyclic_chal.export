@@ -1,0 +1,4 @@
+{"meta":{"exporter":{"name":"lean4export","version":"3.1.0"},"format":{"version":"3.1.0"},"lean":{"githash":"0b77e12952ad39077d80d8bd6b66d601f225c321","version":"4.37.0-rc1"}}}
+{"in":1,"str":{"pre":0,"str":"secret"}}
+{"ie":1,"lam":{"binderInfo":"default","body":1,"name":0,"type":1}}
+{"def":{"all":[1],"hints":"abbrev","levelParams":[],"name":1,"safety":"safe","type":1,"value":1}}

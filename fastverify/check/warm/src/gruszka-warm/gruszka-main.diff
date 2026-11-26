@@ -1,0 +1,24 @@
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -29,6 +29,7 @@
+ mod level;
+ mod quot;
+ mod tc;
++mod warm;
+ 
+ #[cfg(feature = "mimalloc")]
+ #[global_allocator]
+@@ -608,6 +609,13 @@
+ }
+ 
+ fn main() {
++    {
++        let raw_args: Vec<String> = std::env::args().collect();
++        if raw_args.len() >= 3 && raw_args[1] == "--warm-base" {
++            let workers: usize = raw_args.get(3).and_then(|s| s.parse().ok()).unwrap_or_else(|| std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)).max(1);
++            warm::run_warm(&raw_args[2], workers);
++        }
++    }
+     let t_start = Instant::now();
+     let k02t = std::env::var_os("K02_TIMES").is_some();
+     if std::env::var_os("K02_THP").is_some() {

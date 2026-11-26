@@ -1,0 +1,8 @@
+name = "poff"
+defaultTargets = ["Main"]
+
+[[lean_lib]]
+name = "Sol"
+
+[[lean_lib]]
+name = "Main"

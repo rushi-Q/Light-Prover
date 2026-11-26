@@ -1,0 +1,7 @@
+{
+  "challenge_module": "Challenge",
+  "solution_module": "PFR",
+  "theorem_names": ["PFR_conjecture", "PFR_conjecture'"],
+  "definition_names": [],
+  "permitted_axioms": ["propext", "Quot.sound", "Classical.choice"]
+}

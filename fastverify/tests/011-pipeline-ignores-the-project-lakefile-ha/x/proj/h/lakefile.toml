@@ -1,0 +1,8 @@
+name = "mini"
+srcDir = "src"
+defaultTargets = ["Main"]
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]
+globs = ["Main", "Lean.Data.EditDistance"]

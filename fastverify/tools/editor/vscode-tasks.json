@@ -1,0 +1,68 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "fastverify: Sound Watch (Project)",
+      "type": "shell",
+      "command": "${workspaceFolder}/fastverify/bin/fv",
+      "args": [
+        "watch",
+        "${workspaceFolder}",
+        "--challenge",
+        "${input:challengeDir}",
+        "--challenge-sha256",
+        "${input:challengeSha256}",
+        "--sarif",
+        "${workspaceFolder}/.fastverify/results.sarif",
+        "--lsp-out",
+        "${workspaceFolder}/.fastverify/diagnostics.lsp.json"
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "fastverify",
+        "fileLocation": ["autoDetect", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.+):(\\d+):(\\d+):\\s+(error|warning|info):\\s+\\[(FV\\d+)\\]\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "code": 5,
+          "message": 6
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^\\[fv watch\\] watching",
+          "endsPattern": "^\\[fv watch #\\d+\\] changed="
+        }
+      }
+    },
+    {
+      "label": "fastverify: Triage Active File Sub-Lemma",
+      "type": "shell",
+      "command": "${workspaceFolder}/fastverify/bin/fv",
+      "args": [
+        "triage",
+        "${file}",
+        "--repo",
+        "${workspaceFolder}"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "challengeDir",
+      "type": "promptString",
+      "description": "Path to pinned official challenge directory"
+    },
+    {
+      "id": "challengeSha256",
+      "type": "promptString",
+      "description": "64-hex SHA-256 of official challenge.export"
+    }
+  ]
+}

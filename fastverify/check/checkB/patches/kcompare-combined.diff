@@ -1,0 +1,175 @@
+diff --git a/src/main.rs b/src/main.rs
+index f1230a6..a1dbae6 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1566,6 +1566,29 @@ fn load(path: &str, threads: usize, verbose: bool) -> R<Env> {
+         decls.append(&mut c.decls);
+     }
+     std::mem::forget(cs); // freeing is wasted time; the process exits soon
++    // X07 fix for finding 044: the official parser builds Lean.Level / Lean.Expr objects, whose data fields have hard limits
++    // (kernel/level.cpp lean_level_mk_data: depth <= 2^24-1; kernel/expr.cpp lean_expr_mk_data: loose bvar range <= 2^20-1);
++    // beyond them Lean aborts with an internal panic, so the official comparator rejects the file. Decline such files.
++    {
++        let mut depth = vec![0u32; levels.len()];
++        for i in 1..levels.len() {
++            let l = levels[i];
++            let d = match l.kind {
++                L_SUCC => depth[l.a as usize].saturating_add(1),
++                L_MAX | L_IMAX => depth[l.a as usize].max(depth[l.b as usize]).saturating_add(1),
++                _ => 0,
++            };
++            if d > 16777215 {
++                decline!("{}: universe level of depth {} (Lean's Level.mkData limit is 2^24-1: the official parser aborts)", path, d);
++            }
++            depth[i] = d;
++        }
++        for e in exprs.iter() {
++            if e.kind == E_BVAR && ((e.a as u64) | ((e.b as u64) << 32)) >= 1048575 {
++                decline!("{}: bound variable index >= 2^20-1 (Lean's Expr.mkData limit: the official parser aborts)", path);
++            }
++        }
++    }
+     let t3 = Instant::now();
+     let mut env = Env { file, names, levels, exprs, pool, decls, canon: Vec::new(), slots: Vec::new(), decl_of: Vec::new() };
+     // canonical names (structural equality of Lean.Name), in line order (a prefix is bound earlier)
+@@ -1847,7 +1870,7 @@ fn decl_consts(env: &Env, d: &Decl, vis: &mut Bits, stack: &mut Vec<u32>, f: &mu
+ /// theorems, the file declares no axiom outside the permitted list, and every name the walk could ever
+ /// look up (any const / proj type name in any expression, inductive ctors+all, constructor induct,
+ /// recursor rule ctors) is declared. Returns false when inconclusive (then the exact walk decides).
+-fn check_axioms_fast(sol: &Env, theorems: &[Vec<Comp>], legal: &[Vec<Comp>], threads: usize) -> bool {
++fn check_axioms_fast(sol: &Env, theorems: &[Vec<Comp>], defs: &[Vec<Comp>], legal: &[Vec<Comp>], threads: usize) -> bool {
+     let legal: HashSet<u32> = legal.iter().filter_map(|p| sol.lookup(p)).collect();
+     for t in theorems {
+         match sol.decl_by_path(t) {
+@@ -1855,6 +1878,12 @@ fn check_axioms_fast(sol: &Env, theorems: &[Vec<Comp>], legal: &[Vec<Comp>], thr
+             _ => return false,
+         }
+     }
++    for t in defs {
++        match sol.decl_by_path(t) {
++            Some(d) if sol.decls[d as usize].kind == D_DEFN => {}
++            _ => return false,
++        }
++    }
+     let declared = |n: u32| sol.decl_of[sol.canon[n as usize] as usize] != NONE;
+     for d in &sol.decls {
+         if d.kind == D_AXIOM && !legal.contains(&sol.canon[d.name as usize]) {
+@@ -1891,7 +1920,7 @@ fn check_axioms_fast(sol: &Env, theorems: &[Vec<Comp>], legal: &[Vec<Comp>], thr
+     })
+ }
+ 
+-fn check_axioms(sol: &Env, theorems: &[Vec<Comp>], legal: &[Vec<Comp>]) -> R<usize> {
++fn check_axioms(sol: &Env, theorems: &[Vec<Comp>], defs: &[Vec<Comp>], legal: &[Vec<Comp>]) -> R<usize> {
+     let legal: HashSet<u32> = legal.iter().filter_map(|p| sol.lookup(p)).collect();
+     let mut dvis = vec![false; sol.decls.len()];
+     let mut work: Vec<u32> = Vec::new();
+@@ -1902,6 +1931,13 @@ fn check_axioms(sol: &Env, theorems: &[Vec<Comp>], legal: &[Vec<Comp>]) -> R<usi
+         }
+         work.push(d);
+     }
++    for t in defs {
++        let Some(d) = sol.decl_by_path(t) else { reject!("Const not found in solution: '{}'", show(t)) };
++        if sol.decls[d as usize].kind != D_DEFN {
++            reject!("Solution constant is not a definition: '{}'", show(t));
++        }
++        work.push(d);
++    }
+     let mut vis = Bits::new(sol.exprs.len());
+     let mut stack = Vec::new();
+     let mut checked = 0usize;
+@@ -2158,7 +2194,7 @@ fn show(p: &[Comp]) -> String {
+         .join(".")
+ }
+ 
+-fn compare_at(ch: &Env, so: &Env, targets: &[Vec<Comp>], primitive: &[Vec<Comp>]) -> R<usize> {
++fn compare_at(ch: &Env, so: &Env, targets: &[Vec<Comp>], defs: &[Vec<Comp>], primitive: &[Vec<Comp>]) -> R<usize> {
+     let mut cmp = Cmp {
+         ch,
+         so,
+@@ -2197,6 +2233,30 @@ fn compare_at(ch: &Env, so: &Env, targets: &[Vec<Comp>], primitive: &[Vec<Comp>]
+         let mut v2 = Bits::new(ch.exprs.len());
+         expr_consts(ch, c.ty, &mut v2, &mut stack, &mut f)?;
+     }
++    // definition targets ("holes", Compare.lean 4.36): both must be definitions whose ConstantVal (name, level
++    // params, type) and safety match (definitionHoleMatches); the VALUES are not compared. worklist.push name; in
++    // the loop a definition target contributes only its type's constants (the solution's value is walked by
++    // checkAxioms only)
++    for t in defs {
++        let Some(cd) = ch.decl_by_path(t) else { reject!("Const not found in challenge: '{}'", show(t)) };
++        let Some(sd) = so.decl_by_path(t) else { reject!("Const not found in solution: '{}'", show(t)) };
++        let (c, s) = (&ch.decls[cd as usize], &so.decls[sd as usize]);
++        if c.kind != D_DEFN {
++            reject!("Challenge constant is not a definition: '{}'", show(t));
++        }
++        if s.kind != D_DEFN {
++            reject!("Solution constant is not a definition: '{}'", show(t));
++        }
++        if !(cmp.name_eq(c.name, s.name)
++            && cmp.names_eq(&c.lparams, &s.lparams)
++            && cmp.expr_eq(c.ty, s.ty)
++            && c.safety == s.safety)
++        {
++            reject!("Const does not match between challenge and target '{}'", show(t));
++        }
++        target_set.insert(ch.canon[c.name as usize]);
++        work.push(ch.canon[c.name as usize]);
++    }
+     let mut checked: FxSet<u32> = FxSet::default();
+     while let Some(n) = work.pop() {
+         if checked.contains(&n) {
+@@ -2291,7 +2351,7 @@ fn to_name(s: &str) -> R<Vec<Comp>> {
+ 
+ fn usage() -> ! {
+     eprintln!(
+-        "usage: kcompare [-j THREADS] [-v] --challenge CHALLENGE.export --theorems A,B,.. [--axioms X,Y,..] SOLUTION.export\n\
++        "usage: kcompare [-j THREADS] [-v] --challenge CHALLENGE.export --theorems A,B,.. [--definitions D,E,..] [--axioms X,Y,..] SOLUTION.export\n\
+          exit 0 = comparison passes, 1 = the official comparator would reject, 2 = declined (cannot judge)"
+     );
+     std::process::exit(2)
+@@ -2302,6 +2362,7 @@ fn run() -> R<()> {
+     let mut threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8);
+     let mut challenge = None;
+     let mut theorems: Vec<String> = Vec::new();
++    let mut definitions: Vec<String> = Vec::new();
+     let mut axioms: Vec<String> =
+         vec!["propext".into(), "Quot.sound".into(), "Classical.choice".into()];
+     let mut solution = None;
+@@ -2325,6 +2386,7 @@ fn run() -> R<()> {
+             }
+             "--challenge" => challenge = Some(val()),
+             "--theorems" => theorems = val().split(',').filter(|s| !s.is_empty()).map(String::from).collect(),
++            "--definitions" => definitions = val().split(',').filter(|s| !s.is_empty()).map(String::from).collect(),
+             "--axioms" => axioms = val().split(',').filter(|s| !s.is_empty()).map(String::from).collect(),
+             _ if a.starts_with('-') => usage(),
+             _ => {
+@@ -2350,10 +2412,11 @@ fn run() -> R<()> {
+         return Ok(());
+     }
+     let (Some(challenge), Some(solution)) = (challenge, solution) else { usage() };
+-    if theorems.is_empty() {
+-        decline!("nothing to check: no theorem names");
++    if theorems.is_empty() && definitions.is_empty() {
++        decline!("nothing to check: no theorem or definition names");
+     }
+     let thm: Vec<Vec<Comp>> = theorems.iter().map(|s| to_name(s)).collect::<R<_>>()?;
++    let dfs: Vec<Vec<Comp>> = definitions.iter().map(|s| to_name(s)).collect::<R<_>>()?;
+     let ax: Vec<Vec<Comp>> = axioms.iter().map(|s| to_name(s)).collect::<R<_>>()?;
+     let prim: Vec<Vec<Comp>> = PRIMITIVES.iter().map(|s| to_name(s)).collect::<R<_>>()?;
+     let t0 = Instant::now();
+@@ -2363,13 +2426,13 @@ fn run() -> R<()> {
+     // verifyCompare: compareAt, then checkAxioms
+     let mut targets = thm.clone();
+     targets.extend(ax.iter().cloned());
+-    let ncmp = compare_at(&ch, &so, &targets, &prim)?;
++    let ncmp = compare_at(&ch, &so, &targets, &dfs, &prim)?;
+     let t2 = Instant::now();
+     if verbose {
+         eprintln!("kcompare: load {:.3}s compareAt {:.3}s ({} constants compared)", (t1 - t0).as_secs_f64(), (t2 - t1).as_secs_f64(), ncmp);
+     }
+-    let fast = check_axioms_fast(&so, &thm, &ax, threads);
+-    let nax = if fast { 0 } else { check_axioms(&so, &thm, &ax)? };
++    let fast = check_axioms_fast(&so, &thm, &dfs, &ax, threads);
++    let nax = if fast { 0 } else { check_axioms(&so, &thm, &dfs, &ax)? };
+     let t3 = Instant::now();
+     if verbose {
+         eprintln!(

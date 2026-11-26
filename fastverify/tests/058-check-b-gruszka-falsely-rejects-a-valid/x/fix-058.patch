@@ -1,0 +1,33 @@
+diff --git a/src/induct.rs b/src/induct.rs
+index b0c425f..37c12cb 100644
+--- a/src/induct.rs
++++ b/src/induct.rs
+@@ -770,7 +770,27 @@ impl Worker {
+                     if (!aux || i >= npj) && self.occ_term(dom, e, 0, &canon)? {
+                         // Lean's is_rec looks at every binder domain
+                         is_rec = true;
+-                        if is_pi(self.tk(dom)) {
++                        // 058 fix: Lean decides reflexivity on the auxiliary constructor type with the
++                        // parameters INSTANTIATED (elim_nested_inductive); a parameter BVAR stands for its argument
++                        let mut d = dom;
++                        let mut de = e;
++                        let mut refl = is_pi(self.tk(d));
++                        while !refl && self.tk(d) == BVAR {
++                            let v = self.env_get(de, self.tp(d))?;
++                            match self.val(v) {
++                                Val::Thunk { term, env: e2, .. } => {
++                                    d = term;
++                                    de = e2;
++                                    refl = is_pi(self.tk(d));
++                                }
++                                Val::Clo { term, .. } => {
++                                    refl = is_pi(self.tk(term));
++                                    break;
++                                }
++                                _ => break,
++                            }
++                        }
++                        if refl {
+                             is_reflexive = true;
+                         }
+                     }

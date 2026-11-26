@@ -1,0 +1,32 @@
+{
+  "comment": "notary legs: unmodified official Lean 4.36 release libs pleanchecker-notary (7fed15cf, GLIBC_2.17, offline replay + environment digest + veto-only checks) + gruszka-r7 (5aea77f5 = gruszka with the patches of check/checkB/patches and check/notary/gruszka-r7-digest.diff); binaries under /scratch/fastverify-next/notary/",
+  "lean": {
+    "argv": [
+      "/scratch/fastverify-next/notary/7fed15cf/pleanchecker-notary",
+      "-j{threads}",
+      "-v",
+      "--from-export",
+      "{export}"
+    ],
+    "env": {
+      "LEAN_ABORT_ON_PANIC": "1",
+      "LEAN_NUM_THREADS": "{threads}",
+      "LEAN_STACK_SIZE_KB": "917376",
+      "PCHK_PRIO_FILE": "{here}/legs/empty.hints",
+      "PCHK_SLOW_MS": "10000"
+    }
+  },
+  "k2": {
+    "argv": [
+      "/scratch/fastverify-next/notary/5aea77f5/gruszka-r7",
+      "{export}",
+      "{threads}"
+    ],
+    "env": {}
+  },
+  "ro": [
+    "/scratch/fastverify-next/notary/v2",
+    "{here}/legs/empty.hints",
+    "$ELAN_HOME/toolchains/leanprover--lean4---v4.36.0"
+  ]
+}

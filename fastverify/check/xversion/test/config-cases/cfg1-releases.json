@@ -1,0 +1,286 @@
+{
+ "checks": "K1 accelerated Nat ops = 4.36's; K2 persistent constants = 4.36's (+ native reduction); K3 string literals -> String.ofList; K4 quot.cpp/h = 4.36's; see SOUNDNESS-XVERSION.md",
+ "export_formats": [
+  "3.1.0"
+ ],
+ "generated_by": "mkreleases.py (A04)",
+ "not_admitted": {},
+ "reference": {
+  "githash": "611c117bfaf7b7ae1cfcf246ce6fba31e8f509e9",
+  "version": "4.36.0"
+ },
+ "releases": {
+  "4.26.0": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "d8204c9fd894f91bbb2cdfec5912ec8196fd8562",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.26.0-rc1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "fe21b950586cde248dae4b2a0f59d43c1f19cd87",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.26.0-rc2": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "9d4ad1273f6cea397c3066c2c83062a4410d16bf",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.27.0": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "db93fe1608548721853390a10cd40580fe7d22ae",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.27.0-rc1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "2fcce7258eeb6e324366bc25f9058293b04b7547",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.28.0": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "7e01a1bf5c70fc6167d49c345d3bf80596e9a79b",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.28.0-rc1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "3b0f2862196c6a8af9eb0025ee650252694013dd",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.28.1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "978f81d363eabdc49c5720726faa53a6007fcee8",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.29.0": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "98dc76e3c0a9b856c9b98726b713fb04fab16740",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.29.0-rc1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "985f350dcd18fc7814dfa677cac09933f44f3215",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.29.0-rc2": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "83e54b65b65d1d3ce31d99d820a7bd5f3e219295",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.29.0-rc3": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "5d86aa4032284a5242470e95fbe25f1ff506763d",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.29.0-rc4": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "95583d74bd14ff8cc2b789347d15dfdad1259f97",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.29.0-rc5": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "b83c0eefc3e898c1c2b9d311312488d65d527c9a",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.29.0-rc6": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "00659f8e6071d7e46131ed643bf8003b99b044e9",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.29.0-rc7": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "f5d7f18743eac341c4fa6e86abc5056d6ece40f4",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.29.0-rc8": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "513160ea59dfd60defec325636bbc5215a8a6e7e",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.29.1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "f72c35b3f637c8c6571d353742168ab66cc22c00",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.30.0": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "d024af099ca4bf2c86f649261ebf59565dc8c622",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.30.0-rc1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "714601baf118066cbf3f282361339c6d06665b2a",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.30.0-rc2": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "3dc1a088b6d2d8eafe25a7cd7ec7b58d731bd7cc",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.31.0": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "68218e876d2a38b1985b8590fff244a83c321783",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.31.0-rc1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "fd009949156901e6cf15b6d9bf1122294b8e697a",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.31.0-rc2": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "5e44d5f905127c78a2da7a015fe7a47840c95eb1",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.32.0": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "8c9756b28d64dab099da31a4c09229a9e6a2ef35",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.32.0-rc1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "b4812ae53eea93439ad5dce5a5c26591c31cb697",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.32.1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "f054605aea4b840552cca2e725580bffd1e1b704",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.32.2": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "f3b06c705e6c85f5314019d5d3baab0fec5b580c",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.33.0": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "d8b18978322de05a8f3dba51ef03cf5461676c17",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.33.0-rc1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "62eed1db4d67327ec8120be05f1a1b0847d74561",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.33.0-rc2": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "d8b18978322de05a8f3dba51ef03cf5461676c17",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.33.1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "819816b2e0a3bf405af45ae5c7af2491d8f5bee6",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.34.0": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "293d5d0c0c3f3dded4688b3ccd6a33939ac5102b",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.34.0-rc1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "3447a668783dbce1a8fdb97101dd067687b2b418",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.34.0-rc2": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "6a10ac8c22beadecabdbb0919c2b50214762f91d",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.34.1": {
+   "comparator": "no lake comparator in this release (external leanprover/comparator era); judge = the 4.36 judge code",
+   "githash": "5045d0056413266e57c625dcd7c365b10e377c52",
+   "kernel": "extension checks K1-K4 hold; in-kernel native reduction present (absent in 4.36: rejects more)",
+   "rules": []
+  },
+  "4.35.0": {
+   "comparator": "judge code identical to 4.36.0's; primitive/builtin target lists = 4.36.0's",
+   "githash": "eb6cafb7290e8bd5f2937522d8d804f58f02bafc",
+   "kernel": "extension checks K1-K4 hold; other kernel code differs",
+   "rules": []
+  },
+  "4.35.0-rc1": {
+   "comparator": "judge code identical to 4.36.0's; primitive/builtin target lists = 4.36.0's",
+   "githash": "86c6347c75e39ec18c40e25ed2143b71a6e04a0a",
+   "kernel": "extension checks K1-K4 hold; other kernel code differs",
+   "rules": []
+  },
+  "4.35.0-rc2": {
+   "comparator": "judge code identical to 4.36.0's; primitive/builtin target lists = 4.36.0's",
+   "githash": "11acb17ec6b07a8f9e9173e6845197929540936b",
+   "kernel": "extension checks K1-K4 hold; other kernel code differs",
+   "rules": []
+  },
+  "4.35.0-rc3": {
+   "comparator": "judge code identical to 4.36.0's; primitive/builtin target lists = 4.36.0's",
+   "githash": "470d5ce1400764999581fd26d5d72b00d990b0f4",
+   "kernel": "extension checks K1-K4 hold; other kernel code differs",
+   "rules": []
+  },
+  "4.35.0-rc4": {
+   "comparator": "judge code identical to 4.36.0's; primitive/builtin target lists = 4.36.0's",
+   "githash": "c29b6dda4f7c20e3eeaa717c4e565663c5cfa364",
+   "kernel": "extension checks K1-K4 hold; other kernel code differs",
+   "rules": []
+  },
+  "4.36.0": {
+   "comparator": "judge code identical to 4.36.0's; primitive/builtin target lists = 4.36.0's",
+   "githash": "611c117bfaf7b7ae1cfcf246ce6fba31e8f509e9",
+   "kernel": "src/kernel identical to 4.36.0"
+  },
+  "4.36.0-rc1": {
+   "comparator": "judge code identical to 4.36.0's; primitive/builtin target lists = 4.36.0's",
+   "githash": "c9afcddf514a6772bd4d649f7cfc04eff0b9f15e",
+   "kernel": "src/kernel identical to 4.36.0",
+   "rules": []
+  },
+  "4.36.0-rc2": {
+   "comparator": "judge code identical to 4.36.0's; primitive/builtin target lists = 4.36.0's",
+   "githash": "b35cb10cf2ced51a2fd1880cfdbf75c71ab7a35a",
+   "kernel": "src/kernel identical to 4.36.0",
+   "rules": []
+  },
+  "4.37.0-rc1": {
+   "comparator": "judge code of 4.37.0-rc1: 4.36's + the rule 'Challenge definition is not sorried' (Compare.lean) + an order-independent axiom report (Axioms.lean, messages only), reviewed by A04; primitive/builtin target lists = 4.36.0's",
+   "githash": "0b77e12952ad39077d80d8bd6b66d601f225c321",
+   "kernel": "extension checks K1-K4 hold; other kernel code differs",
+   "rules": [
+    "challenge-definitions-sorried"
+   ]
+  }
+ },
+ "schema": 1
+}

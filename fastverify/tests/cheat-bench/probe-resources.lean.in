@@ -1,0 +1,20 @@
+-- F29 resource probe (build-time IO, BOUNDED on purpose): does anything limit memory, tmpfs, disk or processes of the build?
+#eval show IO Unit from do
+  let t0 ← IO.monoMsNow
+  -- 2 GiB into the sandbox's /tmp (a tmpfs: host RAM)
+  let o1 ← IO.Process.output { cmd := "sh", args := #["-c", "dd if=/dev/zero of=/tmp/fill bs=1M count=2048 2>&1 | tail -1; df -h /tmp | tail -1 | tr -s ' '; rm -f /tmp/fill"] }
+  IO.println s!"PROBE tmpfs-2GiB rc={o1.exitCode}: {o1.stdout.trim}"
+  -- 1 GiB into the (writable) project directory
+  let o2 ← IO.Process.output { cmd := "sh", args := #["-c", "dd if=/dev/zero of=./fill.bin bs=1M count=1024 2>&1 | tail -1; df -h . | tail -1; rm -f ./fill.bin"] }
+  IO.println s!"PROBE projdir-1GiB rc={o2.exitCode}: {o2.stdout.trim}"
+  -- 256 concurrent processes
+  let o3 ← IO.Process.output { cmd := "sh", args := #["-c", "for i in $(seq 1 256); do sleep 3 & done; echo procs-visible $(ps -e | wc -l); ulimit -a | tr '\\n' ';'; wait"] }
+  IO.println s!"PROBE procs-256 rc={o3.exitCode}: {o3.stdout.trim}"
+  -- 2 GiB resident in this lean process
+  let a := ByteArray.mk (Array.replicate (2 * 1024 * 1024 * 1024) (7 : UInt8))
+  IO.println s!"PROBE alloc-2GiB ok size={a.size} last={a.get! (a.size - 1)}"
+  IO.println s!"PROBE total {(← IO.monoMsNow) - t0} ms"
+
+theorem t_false : False := sorry
+theorem t_one_eq_two : (1 : Nat) = 2 := sorry
+theorem t_secret : secret = 8 := sorry

@@ -1,0 +1,416 @@
+diff --git a/Main.lean b/Main.lean
+index 4e59344..a700105 100644
+--- a/Main.lean
++++ b/Main.lean
+@@ -70,8 +70,8 @@ unsafe def parseExport (exportFile : String) (seq verbose : Bool) (t0 : Nat) : I
+     return exportEnv
+ 
+ /-- The replay + quotient post-check of `checkExport` on a parsed export (S08: factored out, unchanged). -/
+-unsafe def checkParsed (exportEnv : LeanExport.ExportedEnv) (silent seq verbose : Bool) (nthreads : Nat) (t0 : Nat) :
+-    IO UInt32 := do
++unsafe def checkParsed (exportEnv : LeanExport.ExportedEnv) (silent seq verbose : Bool) (nthreads : Nat) (t0 : Nat)
++    (skip : NameSet := {}) : IO UInt32 := do
+   do
+     let env ← Lean.mkEmptyEnvironment
+     let mut kernelEnv := env.toKernelEnv
+@@ -96,7 +96,8 @@ unsafe def checkParsed (exportEnv : LeanExport.ExportedEnv) (silent seq verbose
+           | none => pure {}
+         let logMinMs := ((← IO.getEnv "PCHK_SLOW_MS").bind (·.toNat?)).getD 0
+         if verbose && !prio.isEmpty then IO.eprintln s!"[pchk] {prio.size} priority names"
+-        kernelEnv ← PChk.replayPar kernelConstMap kernelEnv nthreads verbose prio logMinMs
++        if verbose && !skip.isEmpty then IO.eprintln s!"[pchk] {skip.size} targets pre-verified (targeted mode): their jobs are skipped"
++        kernelEnv ← PChk.replayPar kernelConstMap kernelEnv nthreads verbose prio logMinMs (skip := skip)
+       if verbose then
+         IO.eprintln s!"[pchk] replay done at {((← IO.monoNanosNow) - t0) / 1000000} ms"
+       println "Lean default kernel accepts the solution" silent
+@@ -143,7 +144,8 @@ ACCEPT (0) either by the incremental path (every condition of PChk/Incr.lean hol
+ non-accept is `checkParsed`'s verdict on the final export PATH. With DIR, the process holds an exclusive lock on
+ `DIR/lock` for its whole life and, for `final PATH NONCE`, writes its exit code to `DIR/res-NONCE` (atomically, before
+ exiting) for the `--attach=DIR` client. Exit 2 = protocol error (no verdict). -/
+-unsafe def incremental (dir? : Option String) (silent verbose : Bool) (nthreads : Nat) : IO UInt32 := do
++unsafe def incremental (dir? : Option String) (silent verbose : Bool) (nthreads : Nat)
++    (targets? : Option NameSet := none) : IO UInt32 := do
+   let t00 ← IO.monoNanosNow
+   -- DIR mode: hold the lock (the client's liveness test), read commands from the FIFO
+   let lockH? ← match dir? with
+@@ -158,6 +160,12 @@ unsafe def incremental (dir? : Option String) (silent verbose : Bool) (nthreads
+   let mut env := (← Lean.mkEmptyEnvironment).toKernelEnv
+   let mut nsnap := 0
+   let mut nok := 0
++  -- S04 targeted mode: admitted environment, background target checks (name, checked constant, task)
++  let mut tenv := (← Lean.mkEmptyEnvironment).toKernelEnv
++  let mut tpending : Array (Name × ConstantInfo) := #[]   -- targets whose closure is not complete in `tenv` yet
++  let mut tdone : Std.HashSet Name := {}                  -- names whose closure is complete in `tenv`
++  let mut tadj : PChk.Incr.Adj := {}                      -- refsOf of every constant of `tenv` (cache)
++  let mut tchecks : Array PChk.Incr.TargetCheck := #[]
+   -- S03's scheduling hint (order only, never verdict-relevant), as in checkParsed
+   let prio ← match ← IO.getEnv "PCHK_PRIO_FILE" with
+     | some f => do
+@@ -211,6 +219,30 @@ unsafe def incremental (dir? : Option String) (silent verbose : Bool) (nthreads
+       if dir?.isSome && q.any (fun (l, _) => l.startsWith "final ") then
+         IO.eprintln s!"[incr] {label} ({path}): a final request is waiting; snapshot skipped"
+         continue
++      if let some ts := targets? then
++        -- S04 targeted mode: admit (no check); a target's check starts (in the background, on the environment as it is
++        -- then) as soon as its `refsOf` closure is complete in the admitted environment
++        try
++          let ex ← match task? with
++            | some t => IO.ofExcept (← IO.wait t)
++            | none => parseExport path.toString false verbose (← IO.monoNanosNow)
++          let ta ← IO.monoNanosNow
++          let (env', adj', tg) ← PChk.Incr.admitTargeted tenv tadj ex.constMap ts nthreads
++          let pendNames : NameSet := tpending.foldl (fun acc (n, _) => acc.insert n) {}
++          let tg := tg.filter fun (n, _) => !pendNames.contains n
++          let tb ← IO.monoNanosNow
++          let (env'', adj'', pend', started, done') ← PChk.Incr.startReady env' adj' (tpending ++ tg) tdone
++          tenv := env''; tadj := adj''; tpending := pend'; tdone := done'; tchecks := tchecks ++ started
++          if verbose then
++            IO.eprintln s!"[incr] {label}: admitted in {(tb - ta) / 1000000} ms, closures tested in {((← IO.monoNanosNow) - tb) / 1000000} ms"
++          nok := nok + 1
++          -- (untrusted driver information: nothing is left out in targeted mode; waiting targets need no re-export)
++          if let some d := dir? then
++            try IO.FS.writeFile (System.FilePath.mk d / s!"leftout-{nsnap}.txt") "" catch _ => pure ()
++          IO.eprintln s!"[incr] {label} ingested ({ex.constMap.size} constants admitted, targeted mode: {started.size} target checks started, {tpending.size} targets waiting for their closure, {tchecks.size} started in total) at {((← IO.monoNanosNow) - t00) / 1000000} ms"
++        catch e =>
++          IO.eprintln s!"[incr] {label} ({path}): {e}; snapshot dropped"
++        continue
+       try
+         let ex ← match task? with
+           | some t => IO.ofExcept (← IO.wait t)
+@@ -258,6 +290,50 @@ unsafe def incremental (dir? : Option String) (silent verbose : Bool) (nthreads
+       let stamp0 ← fileStamp path
+       let exportEnv ← parseExport path false verbose t0
+       let m := exportEnv.constMap
++      if targets?.isSome then
++        -- S04 targeted mode: skip set = the started targets that `verifiedTargets` accepts against B (closure and
++        -- kernel-implicit names identical in the environment of their check); the replay of B is the unchanged
++        -- checkParsed with their jobs skipped. An ACCEPT then also needs every skipped target's check to have
++        -- SUCCEEDED (waited for after the replay); in every other case (a skipped check failed, the replay did not
++        -- accept) the verdict is the one of the unchanged checkParsed of B without skips.
++        let tv ← IO.monoNanosNow
++        let skip ← try PChk.Incr.verifiedTargets tenv tadj tchecks m nthreads verbose
++          catch e =>
++            IO.eprintln s!"[incr] targeted final: verification failed ({e}); nothing skipped"
++            pure {}
++        let tvMs := ((← IO.monoNanosNow) - tv) / 1000000
++        let mut nfin := 0
++        for t in tchecks do
++          if ← IO.hasFinished t.task then nfin := nfin + 1
++          unless skip.contains t.name do t.tk.set   -- not used: stop wasting CPU
++        IO.eprintln s!"[incr] targeted final: {tchecks.size} target checks started ({nfin} finished), {tpending.size} targets never started, {skip.size} verified against the final export in {tvMs} ms -> skipped in its replay"
++        let rc ← if skip.isEmpty then checkParsed exportEnv silent false verbose nthreads t0 else do
++          let rc ← checkParsed exportEnv true false verbose nthreads t0 (skip := skip)
++          let tw ← IO.monoNanosNow
++          let mut allOk := rc == 0
++          if allOk then
++            for t in tchecks do
++              if skip.contains t.name then
++                unless (← IO.wait t.task) do
++                  IO.eprintln s!"[incr] targeted final: the check of skipped target {t.name} failed"
++                  allOk := false
++          IO.eprintln s!"[incr] targeted final: replay rc {rc}, skipped targets' checks waited for {((← IO.monoNanosNow) - tw) / 1000000} ms, all succeeded: {allOk}"
++          if allOk then
++            println "Lean default kernel accepts the solution" silent
++            pure (0 : UInt32)
++          else
++            IO.eprintln "[incr] targeted path not usable; judging the final export with the non-incremental check"
++            checkParsed exportEnv silent false verbose nthreads t0
++        let stamp1 ← fileStamp path
++        let rc : UInt32 := if stamp0 == stamp1 then rc else 2
++        if let (some d, some n) := (dir?, nonce?) then
++          let tmp := System.FilePath.mk d / s!".res-{n}.tmp"
++          IO.FS.writeFile tmp s!"{rc} {stamp1} {path}\n"
++          IO.FS.rename tmp (System.FilePath.mk d / s!"res-{n}")
++          IO.eprintln s!"[incr] answered {path} with {rc}"
++          continue
++        if let some h := lockH? then h.unlock
++        return rc
+       -- nothing was ingested: the incremental path would just be the plain replay plus bookkeeping -> plain replay
+       let why : Option String ← if nok == 0 then pure (some "no snapshot was ingested")
+         else PChk.Incr.finalCheck env m nthreads verbose nsnap nok prio
+@@ -366,7 +442,15 @@ unsafe def main (args : List String) : IO UInt32 := do
+     unless args.isEmpty && !seq do
+       throw <| IO.userError s!"--incremental takes no export argument (commands on stdin / DIR/cmd) and no --seq"
+     let dir? := flags.findSome? fun f => (f.dropPrefix? "--incremental=").map (·.toString)
+-    return ← incremental dir? silent verbose nthreads
++    -- S04: --targeted=FILE (declaration names, one per line; an unreadable file = no targets) -> targeted mode
++    let targets? ← match flags.findSome? fun f => (f.dropPrefix? "--targeted=").map (·.toString) with
++      | some f => do
++        let txt ← (IO.FS.readFile f).catchExceptions fun _ => pure ""
++        pure <| some <| txt.splitOn "\n" |>.foldl (init := ({} : NameSet)) fun acc l =>
++          let l := l.trimAscii.toString
++          if l.isEmpty then acc else acc.insert (parseHintName l)
++      | none => pure none
++    return ← incremental dir? silent verbose nthreads targets?
+   if let some dir := flags.findSome? (fun f => (f.dropPrefix? "--attach=").map (·.toString)) then
+     let [exportFile] := args |
+       throw <| IO.userError s!"Exactly one export file expected but got: {args}"
+diff --git a/PChk/Incr.lean b/PChk/Incr.lean
+index 07880f0..603ad4b 100644
+--- a/PChk/Incr.lean
++++ b/PChk/Incr.lean
+@@ -327,4 +327,232 @@ def finalCheck (env : Kernel.Environment) (m : Std.HashMap Name ConstantInfo) (n
+   catch e =>
+     return some s!"final replay failed: {e}"
+ 
++
++/-! ### TARGETED mode (S04, `pleanchecker --incremental=DIR --targeted=FILE`)
++
++During the build only the TARGETS (a list of declaration names, e.g. the longest kernel jobs of an earlier run) are kernel
++checked; every other snapshot constant is merely ADMITTED into the environment `E` with the kernel's own insertion
++function (no check) so that the targets' closures are present. At the final export `B`, a target `d` whose check finished
++successfully is skipped by the (otherwise unchanged) replay of `B` iff `B[d]` is exactly the checked declaration, every
++constant reachable from `d` in `B` (`refsOf`, transitively) is present in `E` with an equal `ConstantInfo` (expressions up
++to `Expr.eqv`, the kernel's `is_equal`), and every kernel-implicit name has the same version (or is absent) in `E` and `B`.
++Why sound: the kernel's check of `d` looks up only `d`'s syntactic closure and the kernel-implicit names (see the main
++argument above); all of those are content-identical in `E` and `B`, so the check computed exactly what the kernel computes
++when `d` is replayed on top of `B`'s constants. Admitted constants are never trusted: each of them that is in `B` is
++checked by the replay of `B` like any other constant, and admitted constants that are not in `B` are never looked up by
++`d`'s check (they are not in its closure). Every anomaly (target not finished, unequal, not closed, implicit difference)
++only removes `d` from the skip set. -/
++
++/-- The declaration of a constant that a target check can run on (Lean.Replay's deferred kinds; unsafe/partial: never). -/
++def targetDecl? (ci : ConstantInfo) : Option Declaration :=
++  if ci.isUnsafe || ci.isPartial then none else
++  match ci with
++  | .thmInfo v => some (.thmDecl v)
++  | .defnInfo v => some (.defnDecl v)
++  | .opaqueInfo v => some (.opaqueDecl v)
++  | .axiomInfo v => some (.axiomDecl v)
++  | _ => none
++
++/-- Adjacency cache of the targeted mode: `refsOf` of the constant `E` holds under each name (computed once, when the
++constant is admitted; entries are never replaced, like `E`'s). -/
++abbrev Adj := Std.HashMap Name (Array Name)
++
++/-- `refsOf` of every constant of `cs` (parallel for big inputs; pure). -/
++def refsPar (cs : Array (Name × ConstantInfo)) (nthreads : Nat) : IO (Array (Name × Array Name)) := do
++  if cs.size < 4096 then return cs.map fun (n, ci) => (n, (refsOf ci).toArray)
++  let (nchunks, csz) := chunks cs.size nthreads
++  let parts ← parallelFor (min nthreads nchunks) nchunks fun k => Id.run do
++    let lo := k * csz
++    let hi := min cs.size (lo + csz)
++    let mut out : Array (Name × Array Name) := #[]
++    for i in [lo:hi] do
++      let (n, ci) := cs[i]!
++      out := out.push (n, (refsOf ci).toArray)
++    return out
++  let mut res : Array (Name × Array Name) := #[]
++  for part in parts do
++    for (_, out) in part do res := res ++ out
++  return res
++
++/-- Admit the constants of `m` that are new to `env` (kernel insertion, no check; the quotient package through the
++checked `Quot` declaration), except the checkable targets, which are returned instead (name, constant): they are admitted
++only when their own check starts (`startReady`). The adjacency of every inserted constant is added to `adj`. -/
++def admitTargeted (env : Kernel.Environment) (adj : Adj) (m : Std.HashMap Name ConstantInfo) (targets : NameSet)
++    (nthreads : Nat) : IO (Kernel.Environment × Adj × Array (Name × ConstantInfo)) := do
++  let mut env := env
++  let mut tgts : Array (Name × ConstantInfo) := #[]
++  let mut added : Array (Name × ConstantInfo) := #[]
++  let mut quot := false
++  for (n, ci) in m.toArray do
++    if (env.find? n).isSome then continue
++    if n == `Quot || quotTargets.contains n then
++      quot := true
++      continue
++    if targets.contains n && (targetDecl? ci).isSome then tgts := tgts.push (n, ci)
++    else
++      env := kenvAdd env ci
++      added := added.push (n, ci)
++  if quot && (env.find? `Quot).isNone then
++    match env.addDeclCore 0 0 Declaration.quotDecl (cancelTk? := none) with
++    | .ok e =>
++      env := e
++      for q in `Quot :: quotTargets do
++        if let some ci := env.find? q then added := added.push (q, ci)
++    | .error _ => pure ()
++  let mut adj := adj
++  for (n, rs) in ← refsPar added nthreads do adj := adj.insert n rs
++  return (env, adj, tgts)
++
++/-- the adjacency of `c` in `env` (cached; computed for constants that are not in the cache) -/
++@[inline] def adjOf (env : Kernel.Environment) (adj : Adj) (c : Name) : Option (Array Name) :=
++  match adj[c]? with
++  | some rs => some rs
++  | none => (env.find? c).map fun ci => (refsOf ci).toArray
++
++/-- Is the `refsOf` closure of `roots` complete in `env` (every reachable name present)? `done` = names already known to
++have a complete closure there (grows monotonically: `env` only grows, entries are never replaced). -/
++def closureComplete (env : Kernel.Environment) (adj : Adj) (roots : Array Name) (done : Std.HashSet Name) :
++    Bool × Std.HashSet Name := Id.run do
++  let mut seen : Std.HashSet Name := {}
++  let mut stack : Array Name := roots
++  while !stack.isEmpty do
++    let c := stack.back!
++    stack := stack.pop
++    if seen.contains c || done.contains c then continue
++    seen := seen.insert c
++    match adjOf env adj c with
++    | some rs => for r in rs do stack := stack.push r
++    | none => return (false, done)
++  let mut done := done
++  for n in seen do done := done.insert n
++  return (true, done)
++
++/-- Check one target with the unchanged kernel function on `env` (which must not contain it). Interrupted = false. -/
++@[noinline] def checkTarget (env : Kernel.Environment) (ci : ConstantInfo) (tk : IO.CancelToken) : Bool :=
++  match targetDecl? ci with
++  | none => false
++  | some d =>
++    match env.addDeclCore 0 0 d (cancelTk? := some tk) with
++    | .ok _ => true
++    | .error _ => false
++
++/-- A started target check: the checked constant, the environment it is checked in, the check and its cancel token (set
++only for checks whose result will not be used). -/
++structure TargetCheck where
++  name : Name
++  ci : ConstantInfo
++  envD : Kernel.Environment
++  task : Task Bool
++  tk : IO.CancelToken
++
++/-- Start the checks of the pending targets whose closure is complete in `env` (repeatedly: a started target is admitted,
++which may complete another one's closure). Returns the new env and adjacency (started targets admitted), the remaining
++pending targets, the started checks and the completeness memo. -/
++def startReady (env : Kernel.Environment) (adj : Adj) (pending : Array (Name × ConstantInfo)) (done : Std.HashSet Name) :
++    BaseIO (Kernel.Environment × Adj × Array (Name × ConstantInfo) × Array TargetCheck × Std.HashSet Name) := do
++  let mut env := env
++  let mut adj := adj
++  let mut pending := pending
++  let mut done := done
++  let mut started : Array TargetCheck := #[]
++  let mut progress := true
++  while progress do
++    progress := false
++    let mut rest : Array (Name × ConstantInfo) := #[]
++    for (d, ci) in pending do
++      if (env.find? d).isSome then continue   -- another version is already in E: never a target here
++      let rs := (refsOf ci).toArray
++      let (ok, done') := closureComplete env adj rs done
++      done := done'
++      if ok then
++        let envD := env
++        let tk ← IO.CancelToken.new
++        let task := Task.spawn (prio := .dedicated) fun _ => checkTarget envD ci tk
++        started := started.push { name := d, ci, envD, task, tk }
++        env := kenvAdd env ci
++        adj := adj.insert d rs
++        progress := true
++      else rest := rest.push (d, ci)
++    pending := rest
++  return (env, adj, pending, started, done)
++
++/-- The started targets the replay of `m` may skip: `m[d]` is exactly the checked constant (and `E`'s), every
++kernel-implicit name is absent from both or equal in `envD` and `m`, and every constant reachable from `d` in `m`
++(`refsOf`) is in `m`, present in `envD` (the environment of `d`'s check) and equal to `E`'s version (= `envD`'s: entries
++are never replaced). The traversal uses `E`'s cached adjacency: for a constant with `m[c] == E[c]` it is `refsOf m[c]`
++(equal constants reference the same names), and the traversal stops at the first constant that is not equal.
++Whether the check itself succeeded is NOT decided here: the caller must wait for it before it may report an accept.
++Cost: one sequential pass over the union of the candidates' closures (cached adjacency, hash sets), the `==`
++comparisons of that union in parallel, then one traversal per target (parallel). -/
++def verifiedTargets (env : Kernel.Environment) (adj : Adj) (cands : Array TargetCheck) (m : Std.HashMap Name ConstantInfo)
++    (nthreads : Nat) (verbose := false) : IO NameSet := do
++  if cands.isEmpty then return {}
++  -- 1. union of the candidates' closures in E
++  let mut seen : Std.HashSet Name := {}
++  let mut uarr : Array Name := #[]
++  let mut stack : Array Name := #[]
++  for t in cands do stack := stack ++ (refsOf t.ci).toArray
++  while !stack.isEmpty do
++    let c := stack.back!
++    stack := stack.pop
++    if seen.contains c then continue
++    seen := seen.insert c
++    uarr := uarr.push c
++    if let some rs := adjOf env adj c then
++      for r in rs do stack := stack.push r
++  -- 2. ok = in m, in E, equal (parallel)
++  let okOf : Name → Bool := fun c =>
++    match m[c]?, env.find? c with
++    | some b, some e => b == e
++    | _, _ => false
++  let (nchunks, csz) := chunks uarr.size nthreads
++  let parts ← parallelFor (min nthreads nchunks) nchunks fun k => Id.run do
++    let lo := k * csz
++    let hi := min uarr.size (lo + csz)
++    let mut bad : Array Name := #[]
++    for i in [lo:hi] do
++      let c := uarr[i]!
++      unless okOf c do bad := bad.push c
++    return bad
++  let mut notOk : Std.HashSet Name := {}
++  for part in parts do
++    for (_, bad) in part do
++      for c in bad do notOk := notOk.insert c
++  -- 3. per target (parallel)
++  let one (t : TargetCheck) : Option String := Id.run do
++    let some bci := m[t.name]? | return some "not in the final export"
++    unless bci == t.ci do return some "final export's version differs from the checked one"
++    match env.find? t.name with
++    | some eci => unless eci == bci do return some "E's version differs"
++    | none => return some "not in E"
++    for p in implicitNames do
++      match t.envD.find? p, m[p]? with
++      | none, none => pure ()
++      | some a, some b => unless a == b do return some s!"implicit name {p} differs"
++      | some _, none => return some s!"implicit name {p} in envD, not in the final export"
++      | none, some _ => return some s!"implicit name {p} absent from envD"
++    let mut vis : Std.HashSet Name := {}
++    let mut stack : Array Name := (refsOf t.ci).toArray
++    while !stack.isEmpty do
++      let c := stack.back!
++      stack := stack.pop
++      if vis.contains c then continue
++      vis := vis.insert c
++      if notOk.contains c || !seen.contains c then
++        return some (if !m.contains c then s!"closure constant {c} not in the final export"
++          else if (env.find? c).isNone then s!"closure constant {c} not in E"
++          else s!"closure constant {c} differs between E and the final export")
++      if (t.envD.find? c).isNone then return some s!"closure constant {c} absent from envD"
++      match adjOf env adj c with
++      | some rs => for r in rs do stack := stack.push r
++      | none => return some s!"closure constant {c} not in E"
++    return none
++  let tasks := cands.map fun t => Task.spawn (prio := .dedicated) fun _ => (t.name, one t)
++  let mut res : NameSet := {}
++  for tk in tasks do
++    match tk.get with
++    | (n, none) => res := res.insert n
++    | (n, some why) => if verbose then IO.eprintln s!"[incr] target {n} not skipped: {why}"
++  return res
++
+ end PChk.Incr
+diff --git a/PChk/Par.lean b/PChk/Par.lean
+index 21e4f0d..117bb41 100644
+--- a/PChk/Par.lean
++++ b/PChk/Par.lean
+@@ -447,8 +447,16 @@ def learnCapMs : Nat := 30000
+ 
+ /-- Parallel replay. Returns the final environment or throws like `Lean.Kernel.Environment.replay`. -/
+ def replayPar (newConstants : Std.HashMap Name ConstantInfo) (env : Kernel.Environment) (nthreads : Nat)
+-    (verbose := false) (prio : NameSet := {}) (logMinMs : Nat := 0) (cancel? : Option IO.CancelToken := none) :
++    (verbose := false) (prio : NameSet := {}) (logMinMs : Nat := 0) (cancel? : Option IO.CancelToken := none)
++    (skip : NameSet := {}) :
+     IO Kernel.Environment := do
++  -- S04 (targeted incremental mode, PChk/Incr.lean `verifiedTargets`): the deferred (`.decl`) jobs of the declarations in
++  -- `skip` count as done without a kernel call. The caller guarantees that each of them was accepted by this kernel code
++  -- in an environment whose constants looked up by that check are content-identical to this export's (its whole closure
++  -- and every kernel-implicit name). The walk is unchanged (the declaration is still added at its position like every
++  -- deferred one); inductive jobs and the official sequential fallback never skip anything. Default: nothing skipped.
++  let isSkipped : Job → Bool := fun j =>
++    !skip.isEmpty && (match j.kind with | .decl => true | _ => false) && skip.contains j.name
+   -- S08: `cancel?` (the incremental leg's snapshot ingestion only) aborts the replay: every kernel call is interrupted
+   -- through the workers' own cancel tokens, jobs report `cancelled` (never a success), so replayPar throws (below: an
+   -- accept needs a positive success record for every job). A cancelled replay therefore never returns an environment.
+@@ -556,7 +564,8 @@ def replayPar (newConstants : Std.HashMap Name ConstantInfo) (env : Kernel.Envir
+     -- below is computed exactly as before.
+     if ← cancelled then
+       throw <| .userError "replay cancelled"
+-    let (ch, pch, tks, workers) ← startPools nw (fun tk j => runJob tk j) .cancelled decided (logMinMs * 1000000)
++    let (ch, pch, tks, workers) ← startPools nw (fun tk j => if isSkipped j then .ok else runJob tk j) .cancelled decided
++      (logMinMs * 1000000)
+     p2tks.set tks
+     let chs := #[ch, pch]
+     let isPrio : Name → Bool := fun n => !prio.isEmpty && prio.contains n

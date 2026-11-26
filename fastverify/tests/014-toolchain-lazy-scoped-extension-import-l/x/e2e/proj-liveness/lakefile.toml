@@ -1,0 +1,19 @@
+name = "mini"
+srcDir = "src"
+defaultTargets = ["Main"]
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]
+
+[[lean_lib]]
+name = "LA"
+roots = ["LA"]
+
+[[lean_lib]]
+name = "LB1"
+roots = ["LB1"]
+
+[[lean_lib]]
+name = "LB2"
+roots = ["LB2"]

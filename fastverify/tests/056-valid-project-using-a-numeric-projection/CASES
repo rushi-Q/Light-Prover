@@ -1,0 +1,2 @@
+# 056: numeric projection on an indexed inductive family: official nanoda panics -> official REJECTS
+indexed-proj | Challenge.export | Main.export | cfg.json | 1 | plain

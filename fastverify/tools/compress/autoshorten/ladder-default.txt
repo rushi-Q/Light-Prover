@@ -1,0 +1,6 @@
+rfl
+simp [$H]
+simp
+simp_all
+grind [$G]
+grind

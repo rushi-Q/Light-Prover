@@ -1,0 +1,5 @@
+name = "okp"
+defaultTargets = ["Solution"]
+
+[[lean_lib]]
+name = "Solution"

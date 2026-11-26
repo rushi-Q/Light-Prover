@@ -1,0 +1,2 @@
+# 032: name component >= 2^32: official nanoda (u32) rejects -> official REJECTS
+name-2^32    | challenge.export | solution.export | comparator.json | 1 | plain

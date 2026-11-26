@@ -1,0 +1,10 @@
+--- $LIGHT_LEAN/fastverify/pipeline/sbx.sh
++++ fixed/pipeline/sbx.sh
+@@ -19,6 +19,6 @@
+   --bind "$B" "$B" \
+   --bind "$L" "$L" \
+   --setenv HOME /tmp/home --setenv PATH "$TCW/bin:/usr/bin:/bin" --setenv TOOLWRAP_LOG "$L/tools.jsonl" \
+-  --setenv LANG C.UTF-8 \
++  --setenv LANG C.UTF-8 --setenv LEAN_INTERP_NO_POOL 1 --setenv LEAN_INTERP_NO_CONST_CACHE 1 \
+   --chdir "$B" \
+   nice -n 10 "$@"

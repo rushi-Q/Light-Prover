@@ -1,0 +1,7 @@
+{
+  "challenge_module": "MDataChal",
+  "solution_module": "Solution",
+  "theorem_names": ["goal"],
+  "definition_names": ["secret"],
+  "permitted_axioms": ["propext", "Quot.sound", "Classical.choice"]
+}

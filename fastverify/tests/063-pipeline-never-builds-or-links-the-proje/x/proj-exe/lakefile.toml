@@ -1,0 +1,12 @@
+name = "mini"
+srcDir = "src"
+defaultTargets = ["Main", "tool"]
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]
+
+# a command-line tool shipped with the project (part of the default build)
+[[lean_exe]]
+name = "tool"
+root = "Tool"

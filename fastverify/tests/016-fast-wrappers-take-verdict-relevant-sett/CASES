@@ -1,0 +1,8 @@
+# 016: verdict-relevant settings must not come from the caller's environment (the official runs kernels under env -i)
+partial-KC_THEOREMS | toy/partial/challenge.export | toy/partial/solution.export | @/rh5-nanoda.json | 1 | plain | KC_THEOREMS=riemannZeta_eq_zero_re
+sorry-KC_AXIOMS     | toy/sorry/challenge.export | toy/sorry/solution.export | @/rh5-nanoda.json | 1 | plain | KC_AXIOMS=propext,Quot.sound,Classical.choice,sorryAx
+str-CCMP_LEANCHECKER| toy/str/challenge.export | toy/str/solution.export | @/rh5-nanoda.json | 1 | plain | CCMP_LEANCHECKER=/bin/true
+str-PCHK_NICE       | toy/str/challenge.export | toy/str/solution.export | @/rh5-nanoda.json | 1 | plain | PCHK_NICE='0 /bin/true #'
+axiom-kernels-true  | toy/axiom/challenge.export | toy/axiom/solution.export | @/rh5-nanoda.json | 1 | plain | GRUSZKA=/bin/true SUSZ=/bin/true NL_IMPORT=/bin/true NLFAST=/bin/true KCOMPARE=/bin/true LEANCHECKER=/bin/true NANODA=/bin/true
+str-kernels-true    | toy/str/challenge.export | toy/str/solution.export | @/rh5-nanoda.json | 1 | plain | GRUSZKA=/bin/true SUSZ=/bin/true NL_IMPORT=/bin/true LEAN_NAT_MAX_SIZE=1 LEAN_STACK_SIZE_KB=1 GRUSZKA_STACK_MB=1 PATH=/nonexistent:/usr/bin:/bin
+axiom-LD_PRELOAD    | toy/axiom/challenge.export | toy/axiom/solution.export | @/rh5-nanoda.json | 1 | plain | LD_LIBRARY_PATH=/nonexistent LEAN_PATH=/nonexistent LEAN_ABORT_ON_PANIC=0 HOME=/nonexistent

@@ -1,0 +1,20 @@
+{
+ "challenge_module": "Challenge",
+ "solution_module": "Cedar.Thm",
+ "theorem_names": [
+  "Cedar.Thm.forbid_trumps_permit",
+  "Cedar.Thm.allowed_only_if_explicitly_permitted",
+  "Cedar.Thm.default_deny",
+  "Cedar.Thm.allowed_iff_explicitly_permitted_and_not_denied",
+  "Cedar.Thm.denied_iff_explicitly_denied_or_not_permitted",
+  "Cedar.Thm.order_and_dup_independent",
+  "Cedar.Thm.unchanged_allow_when_add_permit",
+  "Cedar.Thm.unchanged_deny_when_add_forbid"
+ ],
+ "definition_names": [],
+ "permitted_axioms": [
+  "propext",
+  "Quot.sound",
+  "Classical.choice"
+ ]
+}

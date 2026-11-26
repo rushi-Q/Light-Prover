@@ -1,0 +1,13 @@
+[package]
+name = "kcompare"
+version = "0.1.0"
+edition = "2021"
+description = "Comparator-equivalent statement/axiom check (Lean 4.36 lake comparator compareAt + checkAxioms) for NDJSON exports"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = false

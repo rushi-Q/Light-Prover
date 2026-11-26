@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 8 176 244" width="176" height="244" role="img" aria-label="Gruszka">
+  <path d="M128 50 C116 50 108 62 106 80 C104 98 96 110 84 126 C68 148 58 170 62 194 C68 226 96 244 128 244 C160 244 188 226 194 194 C198 170 188 148 172 126 C160 110 152 98 150 80 C148 62 140 50 128 50 Z" fill="#C9A43A"/>
+  <path d="M128 56 C127 44 129 34 134 24" fill="none" stroke="#5E3A1E" stroke-width="8" stroke-linecap="round"/>
+  <path d="M131 38 C140 22 160 16 178 20 C170 36 150 44 131 38 Z" fill="#6E8B3D"/>
+  <g fill="none" stroke="#FFF3E0" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M108 140 C118 135 125 141 129 151 L150 206"/>
+  <path d="M129 160 L108 206"/></g>
+</svg>

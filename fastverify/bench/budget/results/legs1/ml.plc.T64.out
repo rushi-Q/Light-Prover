@@ -1,0 +1,50 @@
+[pchk] read 13350 ms, markPersistent 125 ms
+[pchk] parse 13475 ms, 707508 constants
+[pchk 2284 ms] remaining built, 707505 constants
+[pchk 2355 ms] deps done
+[pchk 9047 ms] walk 1 done, 691124 jobs
+[pchk 9050 ms] inductives learned, 2894 blocks differ from the export
+[pchk 16959 ms] walk 2 done, 691124 jobs
+[pchk 217627 ms] checks done
+[pchk 217628 ms] workers finished between 155308 and 217621 ms; longest job 170970 ms (localCohomology.diagramComp, walk index 186397 of 691124)
+[pchk-slow] 170970 ms start 46468 ms walk index 186397 localCohomology.diagramComp
+[pchk-slow] 106010 ms start 55180 ms walk index 210589 PresheafOfModules.freeObj._proof_2
+[pchk-slow] 65186 ms start 103671 ms walk index 410828 Polynomial.iterate_derivative_derivative_mul_X
+[pchk-slow] 58603 ms start 42594 ms walk index 171105 CategoryTheory.instIsIsoIndCoimageImageComparison
+[pchk-slow] 43825 ms start 119376 ms walk index 480163 AlgebraicGeometry.Proj.awayι_comp_map
+[pchk-slow] 31968 ms start 117717 ms walk index 472226 AlgebraicGeometry.spread_out_unique_of_isGermInjective
+[pchk-slow] 31951 ms start 71605 ms walk index 278936 Algebra.exists_etale_isIdempotentElem_forall_liesOver_eq_aux₂
+[pchk-slow] 29699 ms start 115372 ms walk index 375131 CategoryTheory.GrothendieckTopology.MayerVietorisSquare.sequenceIso._proof_1
+[pchk-slow] 28088 ms start 52376 ms walk index 163142 AlgebraicGeometry.Proj.sheafedSpaceMap._proof_1
+[pchk-slow] 27660 ms start 114047 ms walk index 457640 CategoryTheory.GrothendieckTopology.MayerVietorisSquare.sequenceIso._proof_4
+[pchk-slow] 26449 ms start 134476 ms walk index 549966 PadicInt.coe_adicCompletionIntegersEquiv_apply
+[pchk-slow] 23988 ms start 117562 ms walk index 472609 CategoryTheory.GrothendieckTopology.MayerVietorisSquare.mk₀_f_comp_biprodAddEquiv_symm_biprodIsoProd_hom
+[pchk-slow] 19849 ms start 95517 ms walk index 375129 CategoryTheory.GrothendieckTopology.MayerVietorisSquare.biprodAddEquiv_symm_biprodIsoProd_hom_toBiprod_apply
+[pchk-slow] 17424 ms start 46675 ms walk index 173393 CliffordAlgebra.GradedAlgebra.lift_ι_eq
+[pchk-slow] 17148 ms start 141551 ms walk index 472610 CategoryTheory.GrothendieckTopology.MayerVietorisSquare.sequenceIso._proof_2
+[pchk-slow] 17135 ms start 69333 ms walk index 277385 CategoryTheory.Sheaf.H.equiv₀.eq_1
+[pchk-slow] 16575 ms start 126040 ms walk index 509663 AlgebraicGeometry.tildeEquiv._proof_6
+[pchk-slow] 15525 ms start 92959 ms walk index 364253 AlgebraicGeometry.Proj.basicOpenToSpec_app_top
+[pchk-slow] 15155 ms start 115065 ms walk index 446669 AlgebraicGeometry.tildeEquiv._proof_5
+[pchk-slow] 14135 ms start 85946 ms walk index 337375 CategoryTheory.Sheaf.H.equiv₀_symm_naturality
+[pchk-slow] 13831 ms start 132967 ms walk index 378794 CategoryTheory.Sheaf.functorH._proof_2
+[pchk-slow] 13781 ms start 84069 ms walk index 320722 AlgebraicGeometry.Scheme.Modules.fromTildeΓ._proof_9
+[pchk-slow] 13395 ms start 49861 ms walk index 194925 AlgebraicGeometry.stalkToFiberRingHom
+[pchk-slow] 13170 ms start 79283 ms walk index 228398 CategoryTheory.Sheaf.H.equiv₀_naturality
+[pchk-slow] 12883 ms start 108600 ms walk index 378792 CategoryTheory.Sheaf.functorH._proof_4
+[pchk-slow] 12876 ms start 98568 ms walk index 389176 AlgebraicGeometry.Scheme.Modules.toOpen_fromTildeΓ_app
+[pchk-slow] 12725 ms start 63647 ms walk index 194997 AlgebraicGeometry.ProjectiveSpectrum.Proj.awayToΓ_ΓToStalk
+[pchk-slow] 12589 ms start 96011 ms walk index 378791 CategoryTheory.Sheaf.H.map_comp_apply
+[pchk-slow] 12586 ms start 76014 ms walk index 299389 CategoryTheory.Sheaf.H.map_add_apply
+[pchk-slow] 12519 ms start 66763 ms walk index 228397 CategoryTheory.Sheaf.H.equiv₀
+[pchk-slow] 11622 ms start 72684 ms walk index 286444 _private.Mathlib.Condensed.Light.Sequence.0.InternalProjectivityProof.cocone._proof_1
+[pchk-slow] 11482 ms start 121484 ms walk index 378793 CategoryTheory.Sheaf.H.map_id_apply
+[pchk-slow] 11442 ms start 48255 ms walk index 194945 AlgebraicGeometry.germ_comp_stalkToFiberRingHom
+[pchk-slow] 11352 ms start 41024 ms walk index 163141 AlgebraicGeometry.Proj.comapStructureSheaf
+[pchk-slow] 10729 ms start 62059 ms walk index 228346 CategoryTheory.Sheaf.H.map
+[pchk-slow] 10579 ms start 128333 ms walk index 446629 AlgebraicGeometry.presentationTilde._proof_7
+[pchk-slow] 10565 ms start 114643 ms walk index 446610 AlgebraicGeometry.tildeFinsupp
+[pchk-slow] 10032 ms start 56690 ms walk index 228389 CategoryTheory.Sheaf.H.addEquiv₀_map
+[pchk] replay done at 235048 ms
+Lean default kernel accepts the solution
+{"name":"lg-ml.plc.T64","limits":{"memory_max":"max","memory_high":"max","swap_max":"0","cpus":"136-199","cpu_quota_pct":""},"exit":0,"wall_s":235.917439989,"memory_peak":13158387712,"sampled_max":{"current":12977065984,"anon":11288039424,"file":24576,"shmem":0},"memory_events":{"low":0,"high":0,"max":0,"oom":0,"oom_kill":0,"oom_group_kill":0,"sock_throttled":0},"cpu_stat":{"usage_usec":8926065276,"user_usec":8802587001,"system_usec":123478275,"nice_usec":0,"core_sched.force_idle_usec":0,"nr_periods":0,"nr_throttled":0,"throttled_usec":0,"nr_bursts":0,"burst_usec":0},"pids_peak":97,"host":"host1","cmd":["env", "-i", "PATH=/usr/bin:/bin", "LANG=C.UTF-8", "LEAN_ABORT_ON_PANIC=1", "PCHK_SLOW_MS=10000", "LEAN_STACK_SIZE_KB=917376", "LEAN_NUM_THREADS=64", "/scratch/fastverify-next/checkS/s03h/pleanchecker", "-j64", "-v", "/scratch/bench-inputs/mathlib/solution.export"]}

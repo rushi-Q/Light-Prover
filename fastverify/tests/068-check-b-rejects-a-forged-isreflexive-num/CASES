@@ -1,0 +1,7 @@
+# 068: forged isReflexive/numNested flags of solution-only inductives (gen/: official 4.33.1 build + lean4export + x/flip.py);
+# the official comparator ignores the exported flags (ACCEPTS); numNested0 is rejected by official nanoda too
+main                | ../gen/Challenge.export | ../gen/Main.export                   | cfg.json | 0 | plain
+Helper_isReflexive  | ../gen/Challenge.export | ../gen/sol_Helper_isReflexive.export | cfg.json | 0 | plain
+Tree_isReflexive    | ../gen/Challenge.export | ../gen/sol_Tree_isReflexive.export   | cfg.json | 0 | plain
+Tree_numNested      | ../gen/Challenge.export | ../gen/sol_Tree_numNested.export     | cfg.json | 0 | plain
+Tree_numNested0     | ../gen/Challenge.export | ../gen/sol_Tree_numNested0.export    | cfg.json | 1 | plain

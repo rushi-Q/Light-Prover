@@ -1,0 +1,4 @@
+# 005 (= 002 for check B): statement differs from the challenge; path conditions must not matter
+plain        | Challenge.export | Main.export | cfg.json | 1 | plain
+arena-suite  | Challenge.export | Main.export | cfg.json | 1 | path:p/arena/suite
+inputs-suitex| Challenge.export | Main.export | cfg.json | 1 | path:y/inputs/suitex

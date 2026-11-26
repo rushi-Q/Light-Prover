@@ -1,0 +1,9 @@
+The wrapper directory bound at /opt/fvcc/bin inside the build root also holds these symlinks (create them next to the
+wrappers; CENV18 / CENV14 = where mkenv.sh installed the conda environments, i.e. $FVCC_CENV18 / $FVCC_CENV14, by default
+$PORT_WORK/cenv18 and $PORT_WORK/cenv14; they must lie under $PORT_WORK, the only host directory broot.sh binds):
+  fvcc/bin:   lld ld.lld llvm-ar llvm-ranlib llvm-profdata llvm-nm -> CENV18/bin/<same>;
+              ar -> llvm-ar, ranlib -> llvm-ranlib, nm -> llvm-nm, cmake -> CENV18/bin/cmake
+  fvcc14/bin: lld ld.lld llvm-ar llvm-ranlib llvm-nm -> CENV14/bin/<same>; ar/ranlib/nm as above;
+              cmake -> CENV18/bin/cmake
+  (fvcc437/bin: as fvcc/bin.)
+(`ar` must understand LLVM bitcode: the ThinLTO stdlib archives are written by Lake with `ar` from PATH.)

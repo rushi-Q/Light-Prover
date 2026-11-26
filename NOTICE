@@ -1,0 +1,156 @@
+Light-Prover
+Copyright 2026 The Light-Prover contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The repository also contains third-party software and code derived from it.
+Each third-party component stays under its own license. The list below gives,
+for every component, its location in this repository, its upstream, its
+license as stated in the shipped license file (or in the file headers where no
+license file is shipped) and its copyright notice.
+
+Code written for Light-Prover itself is covered by LICENSE. This includes
+sources/kcompare/, the driver code of sources/pchk/ (pleanchecker, ccmp,
+FastParse, ParAxioms, PChk/) except the parts listed under 1 below, and
+everything under fastverify/, docs/ and webpage/ that is not listed below.
+
+The repository ships sources only. Binaries built from it link further
+third-party libraries that are not part of this repository, for example the
+Lean 4 runtime and libraries, GMP, libuv, OpenSSL, mimalloc and the Rust
+crates pinned in each Cargo.lock. Whoever distributes such binaries must
+comply with the licenses of those libraries.
+
+-------------------------------------------------------------------------------
+1. Lean 4 (including Lake)
+-------------------------------------------------------------------------------
+   Upstream:   https://github.com/leanprover/lean4
+   License:    Apache License, Version 2.0
+   Copyright:  Microsoft Corporation, Lean FRO, LLC, and the other Lean 4
+               contributors named in the file headers
+
+   In this repository:
+   - sources/pchk/k/src/: a subset of the src/ tree of Lean v4.36.0 (C++
+     kernel and runtime, build files and some Lean sources) with kernel
+     performance patches, used to rebuild kernel libraries.
+   - Files that copy or adapt Lean 4 / Lake source code and keep the upstream
+     header where one was present, for example sources/pchk/CCmp.lean, the
+     CCmp*.lean judge sources under fastverify/check/, and
+     fastverify/tools/fvserve/fork/FvFork.lean (helpers copied from
+     src/Lean/Elab/Frontend.lean of Lean v4.33.1).
+   - Patches against Lean 4 sources, for example under fastverify/toolchains/.
+   - Test fixtures (*.export files) are kernel exports that contain
+     declarations of the Lean 4 core library.
+
+   sources/pchk/k/ contains no copy of the Lean 4 LICENSE file that its file
+   headers refer to. The Apache License 2.0 text is in LICENSE at the root of
+   this repository.
+
+   Exceptions inside sources/pchk/k/src/:
+   - cmake/Modules/GetGitRevisionDescription.cmake,
+     cmake/Modules/GetGitRevisionDescription.cmake.in and
+     cmake/Modules/FindWindowsSDK.cmake come from the cmake-modules project
+     (https://github.com/rpavlik/cmake-modules) and are licensed under the
+     Boost Software License, Version 1.0.
+     Copyright 2009-2013 Iowa State University, Copyright 2013-2020 Rylie
+     Pavlik, Copyright 2011-2023 contributors (as stated in the files). The
+     LICENSE_1_0.txt they refer to is not included; the license text is at
+     https://www.boost.org/LICENSE_1_0.txt.
+   - runtime/mpn.h and runtime/mpn.cpp carry the header "Copyright (c) 2011
+     Microsoft Corporation" without a license statement.
+
+-------------------------------------------------------------------------------
+2. lean4export
+-------------------------------------------------------------------------------
+   Upstream:   https://github.com/leanprover/lean4export
+   License:    Apache License, Version 2.0
+               (sources/lean4export-native/LICENSE)
+   Copyright:  Lean FRO, LLC (file headers)
+
+   In this repository: sources/lean4export-native/, a modified lean4export
+   with a native C++ exporter core (native/) added for Light-Prover, and
+   patches against it under fastverify/export/ and
+   fastverify/tools/delta-export/.
+
+-------------------------------------------------------------------------------
+3. gruszka
+-------------------------------------------------------------------------------
+   Upstream:   https://github.com/jasisz/gruszka (version 0.1.1)
+   License:    MIT OR Apache-2.0, at your option
+               (sources/gruszka/LICENSE-MIT, sources/gruszka/LICENSE-APACHE)
+   Copyright:  Copyright (c) 2026 jasisz
+
+   In this repository: sources/gruszka/; a modified copy in
+   fastverify/check/notary/gruszka-src/ (same license files; adds
+   src/env_digest.rs); patches and patched files under
+   fastverify/check/checkB/patches/ and fastverify/check/warm/src/gruszka-warm/.
+
+-------------------------------------------------------------------------------
+4. susz (vendored by gruszka)
+-------------------------------------------------------------------------------
+   Upstream:   https://github.com/jasisz/susz (version 0.1.4)
+   License:    MIT OR Apache-2.0, at your option
+               (sources/gruszka/vendor/susz/LICENSE-MIT,
+               sources/gruszka/vendor/susz/LICENSE-APACHE)
+   Copyright:  Copyright (c) 2026 jasisz
+
+   In this repository: sources/gruszka/vendor/susz/ and
+   fastverify/check/notary/gruszka-src/vendor/susz/ (same license files).
+
+-------------------------------------------------------------------------------
+5. nano-lean
+-------------------------------------------------------------------------------
+   Upstream:   https://github.com/sdiehl/nano-lean (version 0.4.2)
+   License:    MIT License (sources/nano-lean/LICENSE)
+   Copyright:  Copyright (c) 2026 Stephen Diehl
+
+   In this repository: sources/nano-lean/; patches under
+   fastverify/check/checkB/patches/.
+
+-------------------------------------------------------------------------------
+6. nanoda_lib
+-------------------------------------------------------------------------------
+   Upstream:   https://github.com/ammkrn/nanoda_lib (version 0.4.17)
+   License:    Apache License, Version 2.0 (sources/pchk/nanoda/LICENSE;
+               Cargo.toml: license = "Apache-2.0")
+   Copyright:  the license file and Cargo.toml name no copyright holder
+
+   In this repository: sources/pchk/nanoda/, upstream commit 4c544ed with
+   Light-Prover speed-up changes.
+
+-------------------------------------------------------------------------------
+7. mimalloc (not part of the repository's tracked sources)
+-------------------------------------------------------------------------------
+   Upstream:   https://github.com/microsoft/mimalloc (v3.4.5 is the version
+               sources/pchk/build_k.sh expects)
+   License:    MIT License
+   Copyright:  Copyright (c) 2018-2025 Microsoft Corporation, Daan Leijen
+
+   sources/pchk/build_k.sh unpacks k/vendor/mimalloc-v3.4.5.tar.gz into
+   sources/pchk/k/mimalloc/, which is git-ignored; the archive itself is not
+   shipped. Binaries built this way, like the Lean 4 runtime, contain
+   mimalloc.
+
+-------------------------------------------------------------------------------
+8. Material from public Lean projects (benchmarks)
+-------------------------------------------------------------------------------
+   The challenge files under fastverify/bench/ (bigprojects/, codeprojects/
+   and mathapps/) restate theorem statements, with their
+   imports, open namespaces and variables, from public Lean projects.
+   fastverify/bench/bigprojects/challenges/carleson/Carleson/Defs.lean and the
+   sphere-eversion file Immersion.lean under
+   fastverify/bench/bigprojects/challenges/sphere/ are copies of upstream
+   files (the latter: "Copyright (c) 2024 Michael Rothgang", released under
+   Apache 2.0 according to its header). fastverify/bench/bigprojects/mutants/
+   contains diffs with excerpts of upstream sources. The upstream repositories
+   and commits are listed in the projects.tsv files and READMEs of these
+   directories. This material remains under the licenses of its upstream
+   projects.
+
+-------------------------------------------------------------------------------
+Components without a license file in their directory
+-------------------------------------------------------------------------------
+   - sources/pchk/k/ (Lean 4 sources, item 1): no Lean 4 LICENSE copy, and no
+     LICENSE_1_0.txt for the Boost-licensed CMake modules.
+   - Benchmark material from public Lean projects (item 8).
+   - sources/kcompare/ and sources/pchk/ (Light-Prover code): no
+     per-directory license file; covered by LICENSE at the repository root.

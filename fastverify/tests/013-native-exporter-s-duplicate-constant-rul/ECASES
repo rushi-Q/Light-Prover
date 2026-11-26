@@ -1,0 +1,4 @@
+# 013: two export roots declaring the same theorem/axiom name with different statements (official exporter: import fails)
+dup-theorem | proj/A.lean proj/B.lean proj/C.lean proj/D.lean | | A B | foo
+dup-axiom   | proj/A.lean proj/B.lean proj/C.lean proj/D.lean | | C D | ax
+single-A    | proj/A.lean | | A | foo

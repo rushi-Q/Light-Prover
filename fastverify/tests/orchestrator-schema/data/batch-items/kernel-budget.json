@@ -1,0 +1,21 @@
+{
+  "challenge_module": "Challenge",
+  "solution_module": "Main",
+  "theorem_names": [
+    "qaAddZero"
+  ],
+  "definition_names": [],
+  "permitted_axioms": [
+    "propext",
+    "Quot.sound",
+    "Classical.choice"
+  ],
+  "external_kernels": {
+    "nanoda": [
+      "/usr/bin/timeout",
+      "--preserve-status",
+      "0.001",
+      "$ELAN_HOME/toolchains/leanprover--lean4---v4.36.0/bin/nanoda_bin"
+    ]
+  }
+}

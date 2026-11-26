@@ -1,0 +1,12 @@
+[pchk] read 2379 ms, markPersistent 13 ms
+[pchk] parse 2393 ms, 112954 constants
+[pchk 129 ms] remaining built, 112951 constants
+[pchk 394 ms] deps done
+[pchk 1139 ms] walk 1 done, 109167 jobs
+[pchk 1523 ms] inductives learned, 786 blocks differ from the export
+[pchk 2257 ms] walk 2 done, 109167 jobs
+[pchk 17971 ms] checks done
+[pchk 17971 ms] workers finished between 17125 and 17971 ms; longest job 4401 ms (AlgebraicGeometry.germ_comp_stalkToFiberRingHom, walk index 81940 of 109167)
+[pchk] replay done at 20481 ms
+Lean default kernel accepts the solution
+{"name":"lg-mid.plc.T32","limits":{"memory_max":"max","memory_high":"max","swap_max":"0","cpus":"8-39","cpu_quota_pct":""},"exit":0,"wall_s":20.616888708,"memory_peak":3367444480,"sampled_max":{"current":3353239552,"anon":2909884416,"file":8192,"shmem":0},"memory_events":{"low":0,"high":0,"max":0,"oom":0,"oom_kill":0,"oom_group_kill":0,"sock_throttled":0},"cpu_stat":{"usage_usec":532472470,"user_usec":527981374,"system_usec":4491095,"nice_usec":0,"core_sched.force_idle_usec":0,"nr_periods":0,"nr_throttled":0,"throttled_usec":0,"nr_bursts":0,"burst_usec":0},"pids_peak":71,"host":"host1","cmd":["env", "-i", "PATH=/usr/bin:/bin", "LANG=C.UTF-8", "LEAN_ABORT_ON_PANIC=1", "PCHK_SLOW_MS=10000", "LEAN_STACK_SIZE_KB=917376", "LEAN_NUM_THREADS=32", "/scratch/fastverify-next/checkS/s03h/pleanchecker", "-j32", "-v", "/scratch/bench-inputs/rh-mid/solution.export"]}

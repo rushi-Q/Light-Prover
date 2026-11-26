@@ -1,0 +1,1 @@
+{"challenge_module":"M3","solution_module":"Sol3","theorem_names":["goal"],"definition_names":["secret"],"permitted_axioms":["propext","Quot.sound","Classical.choice"]}

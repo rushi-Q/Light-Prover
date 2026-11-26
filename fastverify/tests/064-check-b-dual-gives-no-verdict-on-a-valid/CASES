@@ -1,0 +1,3 @@
+# 064: heavy decide +kernel proof (primeSum 20000): official ACCEPTS (minutes, recorded '*'); control primeSum 8000
+control8000 | Challenge.export | Control8000.export | cfg.json | 0* | plain
+heavy20000  | Challenge.export | Main.export        | cfg.json | 0* | plain

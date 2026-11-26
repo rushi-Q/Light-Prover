@@ -1,0 +1,8 @@
+name = "mini"
+srcDir = "src"
+buildType = "debug"
+defaultTargets = ["Main"]
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]

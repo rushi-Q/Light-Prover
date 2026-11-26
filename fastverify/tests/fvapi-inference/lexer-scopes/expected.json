@@ -1,0 +1,191 @@
+{
+ "BatteriesLemmaIdent": {
+  "lean": {
+   "4.33.1": [],
+   "4.36.0": "N/A (4.33.1 pkglib)"
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "CtorKeywordInstance": {
+  "lean": {
+   "4.33.1": [
+    "Foo.instance.sizeOf_spec",
+    "easy_thm"
+   ],
+   "4.36.0": [
+    "Foo.instance.sizeOf_spec",
+    "easy_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "CtorSectionNamespaceLeak": {
+  "lean": {
+   "4.33.1": [
+    "N.Foo.section.sizeOf_spec",
+    "easy_thm"
+   ],
+   "4.36.0": [
+    "N.Foo.section.sizeOf_spec",
+    "easy_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "EllipsisDotTheorem": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm",
+    "hard_thm"
+   ],
+   "4.36.0": [
+    "easy_thm",
+    "hard_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "LeadDotEndNamespace": {
+  "lean": {
+   "4.33.1": [
+    "Foo.end.sizeOf_spec",
+    "N.easy_thm"
+   ],
+   "4.36.0": [
+    "Foo.end.sizeOf_spec",
+    "N.easy_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "LocalExt": {
+  "lean": {
+   "4.33.1": [
+    "P.x",
+    "my_ext",
+    "my_ext_iff"
+   ],
+   "4.36.0": [
+    "P.x",
+    "my_ext",
+    "my_ext_iff"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "MathlibEllipsisDotLemma": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm",
+    "hard_thm"
+   ],
+   "4.36.0": "N/A (4.33.1 pkglib)"
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "MathlibToFun": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm",
+    "hard_thm"
+   ],
+   "4.36.0": "N/A (4.33.1 pkglib)"
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "MathlibToSetNotation": {
+  "lean": {
+   "4.33.1": [
+    "my_le_refl",
+    "my_subset_refl"
+   ],
+   "4.36.0": "N/A (4.33.1 pkglib)"
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "PipeDotEndNamespace": {
+  "lean": {
+   "4.33.1": [
+    "N.easy_thm",
+    "S.mk.inj",
+    "S.mk.injEq",
+    "S.mk.sizeOf_spec"
+   ],
+   "4.36.0": [
+    "N.easy_thm",
+    "S.mk.inj",
+    "S.mk.injEq",
+    "S.mk.sizeOf_spec"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "PrevCmdPrivate": {
+  "lean": {
+   "4.33.1": [
+    "S.mk.inj",
+    "S.mk.injEq",
+    "S.mk.sizeOf_spec",
+    "easy_thm"
+   ],
+   "4.36.0": [
+    "S.mk.inj",
+    "S.mk.injEq",
+    "S.mk.sizeOf_spec",
+    "easy_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "ScopedExt": {
+  "lean": {
+   "4.33.1": [
+    "P.x",
+    "my_ext",
+    "my_ext_iff"
+   ],
+   "4.36.0": [
+    "P.x",
+    "my_ext",
+    "my_ext_iff"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "WeakNamespace": {
+  "lean": {
+   "4.33.1": [
+    "N.easy_thm"
+   ],
+   "4.36.0": [
+    "N.easy_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ },
+ "WeakNamespaceRoot": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm"
+   ],
+   "4.36.0": [
+    "easy_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "refused (Lean's answer recorded with a reproduction script)"
+ }
+}

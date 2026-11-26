@@ -1,0 +1,5 @@
+name = "stmt"
+defaultTargets = ["Solution"]
+
+[[lean_lib]]
+name = "Solution"

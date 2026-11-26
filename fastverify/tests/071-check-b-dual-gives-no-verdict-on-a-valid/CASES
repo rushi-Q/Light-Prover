@@ -1,0 +1,4 @@
+# 071: deep binder nest (innermost bvar index N-1), official build + export generated per run; official ACCEPTS all
+bv-32766 | challenge.export | - | comparator.json | 0 | gen:../gen-bv-32766.sh
+bv-32768 | challenge.export | - | comparator.json | 0 | gen:../gen-bv-32768.sh
+bv-65535 | challenge.export | - | comparator.json | 0 | gen:../gen-bv-65535.sh

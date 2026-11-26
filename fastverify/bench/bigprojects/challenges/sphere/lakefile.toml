@@ -1,0 +1,19 @@
+name = "challenge"
+defaultTargets = ["Challenge"]
+
+[leanOptions]
+pp.unicode.fun = true
+autoImplicit = false
+relaxedAutoImplicit = false
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.33.0"
+
+[[lean_lib]]
+name = "Challenge"
+
+[[lean_lib]]
+name = "SphereEversion"
+roots = ["SphereEversion.ToMathlib.Geometry.Manifold.Immersion"]

@@ -1,0 +1,331 @@
+diff -ruN -x target a/src/induct.rs b/src/induct.rs
+--- a/src/induct.rs
++++ b/src/induct.rs
+@@ -431,6 +431,113 @@
+             f = self.ta(f);
+         }
+         args.reverse();
++        // X07 055 fix: a parameter of an auxiliary type applied to arguments (`t α` with t := Box in BaseFoo's
++        // constructor): Lean instantiates the parameters first and sees the constant-headed `Box Foo3`
++        if !args.is_empty() && self.tk(f) == BVAR && self.tp(f) >= depth {
++            let mut v = self.env_get(env, self.tp(f) - depth)?;
++            // (row, level list, head argument values) of the parameter's argument, if it is a constant application
++            let mut head: Option<(u32, u32, Vec<V>)> = None;
++            // Z04-9 fix: argument values of the spines peeled so far, outermost last. Lean substitutes the
++            // parameters syntactically (instantiate_rev, no beta), so a parameter whose argument is itself a
++            // parameter application (`g α` with g := `f β`, f := `Box2`) is the constant application
++            // `Box2 β α`: a variable head is followed into its value, and the arguments peeled on the way
++            // are appended after the head's own ones
++            let mut acc: Vec<V> = Vec::new();
++            loop {
++                self.tick()?;
++                match self.val(v) {
++                    Val::Thunk { term, env: he, ls: hl } => {
++                        let mut hargs = Vec::new();
++                        let mut hf = term;
++                        while self.tk(hf) == APP {
++                            hargs.push(self.tb(hf));
++                            hf = self.ta(hf);
++                        }
++                        hargs.reverse();
++                        if self.tk(hf) == BVAR {
++                            let mut hv = Vec::with_capacity(hargs.len() + acc.len());
++                            for &a in &hargs {
++                                hv.push(self.thunk(a, he, hl)?);
++                            }
++                            hv.extend_from_slice(&acc);
++                            acc = hv;
++                            v = self.env_get(he, self.tp(hf))?;
++                            continue;
++                        }
++                        if self.tk(hf) == CONST {
++                            let r = self.env.row(self.ta(hf));
++                            if r != NONE {
++                                let mut hv = Vec::with_capacity(hargs.len() + acc.len());
++                                for &a in &hargs {
++                                    hv.push(self.thunk(a, he, hl)?);
++                                }
++                                hv.extend_from_slice(&acc);
++                                let l = self.lsub_ll(hf, hl);
++                                head = Some((r, l, hv));
++                            }
++                        }
++                    }
++                    Val::Neu { head: Head::Const(r, l), spine } => {
++                        if let Some(xs) = self.app_args(spine) {
++                            let mut hv = xs.to_vec();
++                            hv.extend_from_slice(&acc);
++                            head = Some((r, l, hv));
++                        }
++                    }
++                    _ => {}
++                }
++                break;
++            }
++            if let Some((jrow, jllr, hv)) = head {
++                if self.visible(jrow) && !ind.canon.contains(&self.canon_of_row(jrow)) {
++                    if let CKind::Induct { nparams: jnp, all: jall, .. } = &self.env.consts[jrow as usize].kind {
++                        let jnp = *jnp as usize;
++                        let jall = jall.clone();
++                        let nh = hv.len().min(jnp);
++                        let na = jnp - nh;
++                        if args.len() >= na {
++                            let mut nested = false;
++                            for &x in &hv[..nh] {
++                                if self.occ_val(x, &ind.canon)? {
++                                    nested = true;
++                                }
++                            }
++                            for &a in &args[..na] {
++                                if self.occ_term(a, env, depth, &ind.canon)? {
++                                    nested = true;
++                                }
++                            }
++                            if nested {
++                                for &a in &args[..na] {
++                                    for d in 0..depth {
++                                        if self.uses_var(a, d) {
++                                            return reject(format!(
++                                                "invalid nested inductive datatype '{}', nested inductive datatypes parameters cannot contain local variables",
++                                                self.env.name_str(self.env.consts[jrow as usize].name)
++                                            ));
++                                        }
++                                    }
++                                }
++                                let mut e = env;
++                                for _ in 0..depth {
++                                    e = self.push_env(dummy, e);
++                                }
++                                let mut ds: Vec<V> = hv[..nh].to_vec();
++                                for &a in &args[..na] {
++                                    ds.push(self.thunk(a, e, ls)?);
++                                }
++                                self.nested_found_vals(ind, ds, jllr, jrow, &jall)?;
++                                // the remaining arguments (indices) are scanned like any subterm
++                                for &a in &args[na..] {
++                                    self.scan_nested(ind, a, env, ls, depth, dummy)?;
++                                }
++                                return Ok(());
++                            }
++                        }
++                    }
++                }
++            }
++        }
+         if !args.is_empty() && self.tk(f) == CONST {
+             let jrow = self.env.row(self.ta(f));
+             if jrow != NONE && self.visible(jrow) && !ind.canon.contains(&self.canon_of_row(jrow)) {
+@@ -463,6 +570,11 @@
+                     if let Val::Thunk { term, env: e2, ls: l2 } = self.val(v) {
+                         return self.scan_nested(ind, term, e2, l2, 0, dummy);
+                     }
++                    // X07 055(b) fix: Pi-typed arguments are closures (Val::Clo), not thunks; Lean's instantiated
++                    // constructor type contains them literally and replace_all_nested looks inside
++                    if let Val::Clo { term, env: e2, ls: l2 } = self.val(v) {
++                        return self.scan_nested(ind, term, e2, l2, 0, dummy);
++                    }
+                 }
+                 Ok(())
+             }
+@@ -517,6 +629,11 @@
+             ds.push(self.thunk(a, e, ls)?);
+         }
+         let jllr = self.lsub_ll(f, ls);
++        self.nested_found_vals(ind, ds, jllr, jrow, jall)
++    }
++
++    /// X07 055 fix: the part of nested_found after the parameter arguments are values
++    fn nested_found_vals(&mut self, ind: &mut Ind, ds: Vec<V>, jllr: u32, jrow: u32, jall: &[u32]) -> R<()> {
+         // an equal occurrence already has its auxiliary type
+         for j in 0..ind.types.len() {
+             let ti = &ind.types[j];
+@@ -736,10 +853,12 @@
+             };
+             nnested_claim.push(*nnested);
+             if *nparams != np || *u2 != unsafe_ || !same_lp(c) {
+-                return reject("types of a mutual block disagree on parameters, universes or safety");
++                // F06 fix-068: Lean 4.36 replay builds the block from ONE type's record and never compares the others': decline
++                return decline("types of a mutual block disagree on parameters, universes or safety (records not compared by Lean 4.36)");
+             }
+             if all.len() != canon.len() || all.iter().zip(canon.iter()).any(|(&a, &b)| env.canon(a) != b) {
+-                return reject("inductive type: wrong `all` list");
++                // F06 fix-068: the other types' `all` records are never compared by Lean 4.36 replay: decline
++                return decline("inductive type: `all` list differs (records not compared by Lean 4.36)");
+             }
+             nidx.push(*nindices);
+             for &cn in cs.iter() {
+@@ -860,7 +979,8 @@
+                 k += 1;
+             }
+             if k != nidx[j] {
+-                return reject("wrong number of indices");
++                // F06 fix-068: Lean 4.36 replay recomputes numIndices and never compares the record's: decline
++                return decline("number of indices differs from the record (not compared by Lean 4.36)");
+             }
+             let l = self.sort_of(w, "inductive type result")?;
+             if j == 0 {
+@@ -898,7 +1018,8 @@
+         }
+         let naux = (ind.types.len() - types.len()) as u32;
+         if nnested_claim.iter().any(|&x| x != naux) {
+-            return reject("numNested does not match the nested occurrences");
++            // F06 fix-068: Lean 4.36 replay recomputes numNested and never compares the record's: decline, not reject
++            return decline("numNested differs from the nested occurrences (not compared by Lean 4.36)");
+         }
+         // auxiliary types live in the block's universe
+         for j in types.len()..ind.types.len() {
+@@ -936,7 +1057,27 @@
+                     if (!aux || i >= npj) && self.occ_term(dom, e, 0, &canon)? {
+                         // Lean's is_rec looks at every binder domain
+                         is_rec = true;
+-                        if is_pi(self.tk(dom)) {
++                        // X07 058 fix: Lean decides reflexivity on the auxiliary constructor type with the
++                        // parameters INSTANTIATED (elim_nested_inductive); a parameter BVAR stands for its argument
++                        let mut d = dom;
++                        let mut de = e;
++                        let mut refl = is_pi(self.tk(d));
++                        while !refl && self.tk(d) == BVAR {
++                            let v = self.env_get(de, self.tp(d))?;
++                            match self.val(v) {
++                                Val::Thunk { term, env: e2, .. } => {
++                                    d = term;
++                                    de = e2;
++                                    refl = is_pi(self.tk(d));
++                                }
++                                Val::Clo { term, .. } => {
++                                    refl = is_pi(self.tk(term));
++                                    break;
++                                }
++                                _ => break,
++                            }
++                        }
++                        if refl {
+                             is_reflexive = true;
+                         }
+                     }
+@@ -986,7 +1127,8 @@
+         for &r in &types {
+             let CKind::Induct { is_rec: ir, is_reflexive: rf, .. } = env.consts[r as usize].kind else { unreachable!() };
+             if ir != is_rec || rf != is_reflexive {
+-                return reject("isRec / isReflexive do not match the declaration");
++                // F06 fix-068: Lean 4.36 replay recomputes isRec / isReflexive and never compares the record's: decline
++                return decline("isRec / isReflexive differ from the declaration (not compared by Lean 4.36)");
+             }
+         }
+ 
+@@ -1176,18 +1318,21 @@
+             for m in 0..nt {
+                 a = self.rec_pi(a, "motive")?;
+                 let md = self.ta(a);
+-                let (idx, rest, re) = self.s_indices(ind, m, md, ea)?;
+-                let q = self.rec_pi(rest, "motive major")?;
+-                let iapp = self.ind_app(ind, m, &idx)?;
+-                if !self.sx_eq(Sx::T(self.ta(q), re, 0), Sx::V(iapp))? {
+-                    return reject("recursor type: motive major type mismatch");
+-                }
+-                let x = self.fresh(iapp)?;
+-                let re = self.push_env(x, re);
+-                let s = self.mk(Val::Sort(elim_level))?;
+-                if !self.sx_eq(Sx::T(self.tb(q), re, 0), Sx::V(s))? {
+-                    return reject("recursor type: motive must return the elimination universe");
++                let r = self.rec_motive(ind, m, md, ea, elim_level);
++                if m >= nreal && r == Err(Stop::Reject) {
++                    // Z04-9 fix (F06 fix-068 extended from the count to the order): the motives of the auxiliary
++                    // types follow the order in which Lean's elim_nested_inductive met the nested occurrences.
++                    // gruszka re-implements that search; when its auxiliary list differs from the export's in
++                    // order or shape (the count was already compared: numNested), its model, not the export, may
++                    // be wrong. Lean 4.36 replay compares every recursor with the one its own kernel generates,
++                    // so this is a decline (veto, never an accept), not a kernel verdict
++                    let msg = stop_msg();
++                    return decline(format!(
++                        "auxiliary type {} of the nested block: {msg} (gruszka's nested-occurrence model differs from the export's order; not compared as a kernel verdict)",
++                        m - nreal + 1
++                    ));
+                 }
++                r?;
+                 doms.push((md, ea));
+                 let mty = self.thunk(md, ea, 0)?;
+                 let cv = self.fresh(mty)?;
+@@ -1250,6 +1395,25 @@
+         }
+         Ok(())
+     }
++
++    /// The motive binder domain `md` (in `ea`) of block type `m`: the index
++    /// binders, the major premise `T pargs indices`, and the elimination
++    /// universe as result.
++    fn rec_motive(&mut self, ind: &Ind, m: usize, md: u32, ea: u32, elim_level: u32) -> R<()> {
++        let (idx, rest, re) = self.s_indices(ind, m, md, ea)?;
++        let q = self.rec_pi(rest, "motive major")?;
++        let iapp = self.ind_app(ind, m, &idx)?;
++        if !self.sx_eq(Sx::T(self.ta(q), re, 0), Sx::V(iapp))? {
++            return reject("recursor type: motive major type mismatch");
++        }
++        let x = self.fresh(iapp)?;
++        let re = self.push_env(x, re);
++        let s = self.mk(Val::Sort(elim_level))?;
++        if !self.sx_eq(Sx::T(self.tb(q), re, 0), Sx::V(s))? {
++            return reject("recursor type: motive must return the elimination universe");
++        }
++        Ok(())
++    }
+ 
+     /// The Pi term `a` (the file's recursor type is never reduced).
+     fn rec_pi(&self, a: u32, what: &str) -> R<u32> {
+diff -ruN -x target a/src/main.rs b/src/main.rs
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -667,7 +667,9 @@
+                 Box::leak(v.into_boxed_slice())
+             }
+             Err(e) => match e.fault {
+-                susz::pack::Fault::Invalid => finish(1, &format!("rejected: not a valid export: {}", e.msg)),
++                // F06 fix-039: the official export parser is more lenient than the packer (sparse/non-dense indices,
++                // unknown keys, duplicate records, ...), so a format-level fault is a decline, never a verdict
++                susz::pack::Fault::Invalid => finish(2, &format!("declined: the packer finds the export invalid (format level; the official parser may accept it): {}", e.msg)),
+                 susz::pack::Fault::Cannot => finish(2, &format!("declined: cannot pack: {}", e.msg)),
+             },
+         }
+@@ -742,7 +744,8 @@
+     };
+     let env = match loaded {
+         Ok(e) => e,
+-        Err(env::LoadError::Reject(m)) => finish(1, &format!("rejected: {m}")),
++        // F06 fix-039: load-level (structural) faults are declines too; only the kernel's own checks reject
++        Err(env::LoadError::Reject(m)) => finish(2, &format!("declined: load-level fault (not a kernel verdict): {m}")),
+         Err(env::LoadError::Decline(m)) => finish(2, &format!("declined: {m}")),
+         Err(env::LoadError::IndexInvalid(m)) => finish(2, &format!("index invalid: {m}")),
+     };
+diff -ruN -x target a/vendor/susz/src/pack/write.rs b/vendor/susz/src/pack/write.rs
+--- a/vendor/susz/src/pack/write.rs
++++ b/vendor/susz/src/pack/write.rs
+@@ -60,10 +60,8 @@
+         let cnt = pk.dmeta[q + 1] as usize;
+         for &n in &pk.dmeta[q + 2..q + 2 + cnt] {
+             let c = pk.canon[n as usize] as usize;
+-            if c == crate::canon::ANON as usize {
+-                // a structural error of MAIN (spec 5.2)
+-                return Err(inv!("declaration {di} declares the anonymous name"));
+-            }
++            // X08 fix-053: the Lean kernel accepts a declaration named by the anonymous name
++            // (only "already declared" is checked), so the packer must not reject it.
+             if by[c] != u32::MAX {
+                 let name = pk.cn.display(&pk.stream, c as u32);
+                 return Err(if by[c] == di {
+diff -ruN -x target a/vendor/susz/src/read.rs b/vendor/susz/src/read.rs
+--- a/vendor/susz/src/read.rs
++++ b/vendor/susz/src/read.rs
+@@ -1152,12 +1152,7 @@
+             return Ok(());
+         }
+         let c = self.st.name_canon[name as usize] as usize;
+-        if c == crate::canon::ANON as usize {
+-            return Err((
+-                Class::AnonymousName,
+-                "a declaration declares the anonymous name".into(),
+-            ));
+-        }
++        // X08 fix-053: the anonymous name is an ordinary declared name for the Lean kernel.
+         let d = self.st.canon_decl[c];
+         if d != NONE {
+             let s = self.st.canon.display(self.bytes, c as u32);

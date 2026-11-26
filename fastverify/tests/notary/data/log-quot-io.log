@@ -1,0 +1,2 @@
+Lean default kernel accepts the solution
+Quotient post-check rejects the solution: inappropriate type (error code: 21, illegal operation on a directory)

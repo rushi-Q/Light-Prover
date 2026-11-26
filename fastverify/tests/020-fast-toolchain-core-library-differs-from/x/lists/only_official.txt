@@ -1,0 +1,14 @@
+_private.Lean.Compiler.LCNF.Specialize.0.Lean.Compiler.LCNF.Specialize.initFn._@.Lean.Compiler.LCNF.Specialize.2768337261._hygCtx._hyg.2
+_private.Lean.Environment.0.Lean.finalizeImport.match_3
+_private.Lean.Environment.0.Lean.finalizeImport.unsafe_11
+_private.Lean.Environment.0.Lean.finalizeImport.unsafe_5
+_private.Lean.Environment.0.Lean.finalizeImport.unsafe_8
+_private.Lean.Environment.0.Lean.finalizeImport.unsafe_impl_12
+_private.Lean.Environment.0.Lean.finalizeImport.unsafe_impl_6
+_private.Lean.Environment.0.Lean.finalizeImport.unsafe_impl_9
+_private.Lean.Parser.Extension.0.Lean.Parser.compileParserDescr.visit
+_private.Lean.Parser.Extension.0.Lean.Parser.compileParserDescr.visit._unsafe_rec
+_private.Lean.Parser.Extension.0.Lean.Parser.compileParserDescr.visit.match_1
+_private.Lean.Parser.Extension.0.Lean.Parser.compileParserDescr.visit.match_3
+_private.Lean.Parser.Extension.0.Lean.Parser.compileParserDescr.visit.match_5
+_private.Lean.Parser.Extension.0.Lean.Parser.initFn._@.Lean.Parser.Extension.227734417._hygCtx._hyg.2

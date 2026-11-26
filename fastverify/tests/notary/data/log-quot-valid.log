@@ -1,0 +1,2 @@
+Lean default kernel accepts the solution
+Quotient post-check rejects the solution: Quotient constant mismatch on: Quot.lift

@@ -1,0 +1,65 @@
+diff --git a/native/fast_export.cpp b/native/fast_export.cpp
+index fc540a6..b740821 100644
+--- a/native/fast_export.cpp
++++ b/native/fast_export.cpp
+@@ -54,6 +54,32 @@ static const uint32_t NONE = 0xffffffffu;
+     _exit(1);
+ }
+ 
++// fix (findings 010): strings that are not valid UTF-8 cannot be rendered byte-for-byte like the official exporter
++// (Json.renderString decodes and re-encodes them); give up so the reference implementation writes them.
++static bool utf8_ok(const uint8_t* p, size_t n) {
++    size_t i = 0;
++    while (i < n) {
++        uint8_t c = p[i];
++        if (c < 0x80) { i++; continue; }
++        size_t k; uint32_t cp;
++        if ((c & 0xE0) == 0xC0) { k = 1; cp = c & 0x1F; }
++        else if ((c & 0xF0) == 0xE0) { k = 2; cp = c & 0x0F; }
++        else if ((c & 0xF8) == 0xF0) { k = 3; cp = c & 0x07; }
++        else return false;
++        if (i + k >= n) return false;
++        for (size_t j = 1; j <= k; j++) {
++            uint8_t d = p[i + j];
++            if ((d & 0xC0) != 0x80) return false;
++            cp = (cp << 6) | (d & 0x3F);
++        }
++        if (k == 1 && cp < 0x80) return false;
++        if (k == 2 && (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF))) return false;
++        if (k == 3 && (cp < 0x10000 || cp > 0x10FFFF)) return false;
++        i += k + 1;
++    }
++    return true;
++}
++
+ static double now_s() {
+     struct timespec ts;
+     clock_gettime(CLOCK_MONOTONIC, &ts);
+@@ -694,6 +720,7 @@ struct Out {
+         buf[len++] = c;
+     }
+     void jstr(const uint8_t* p, size_t n) {
++        if (!utf8_ok(p, n)) die("string is not valid UTF-8");
+         reserve(n * 6 + 2);
+         char* o = buf + len;
+         *o++ = '"';
+@@ -1165,7 +1192,10 @@ struct In {
+             }
+             case 11: {
+                 uint32_t n = intern_name(m, rawf(p, 0));
+-                uint32_t i = (uint32_t)nat_small(m, rawf(p, 1));
++                uint64_t i64 = nat_small(m, rawf(p, 1));
++                // fix (finding 008): the index is a Nat; never truncate it (the reference implementation prints it whole)
++                if (i64 > 0xffffffffull) die("projection index does not fit in 32 bits");
++                uint32_t i = (uint32_t)i64;
+                 uint32_t e = intern_expr(m, f(m, p, 2), disc);
+                 key = EKey{11, n, i, e};
+                 break;
+@@ -2410,6 +2440,7 @@ struct RBuf {  // render buffer (same rendering as Out); memory from the output
+         buf[len++] = c;
+     }
+     void jstr(const uint8_t* p, size_t n) {  // = Out::jstr
++        if (!utf8_ok(p, n)) die("string is not valid UTF-8");
+         reserve(n * 6 + 2);
+         char* o = buf + len;
+         *o++ = '"';

@@ -1,0 +1,23 @@
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -667,7 +667,9 @@
+                 Box::leak(v.into_boxed_slice())
+             }
+             Err(e) => match e.fault {
+-                susz::pack::Fault::Invalid => finish(1, &format!("rejected: not a valid export: {}", e.msg)),
++                // F06 fix-039: the official export parser is more lenient than the packer (sparse/non-dense indices,
++                // unknown keys, duplicate records, ...), so a format-level fault is a decline, never a verdict
++                susz::pack::Fault::Invalid => finish(2, &format!("declined: the packer finds the export invalid (format level; the official parser may accept it): {}", e.msg)),
+                 susz::pack::Fault::Cannot => finish(2, &format!("declined: cannot pack: {}", e.msg)),
+             },
+         }
+@@ -742,7 +744,8 @@
+     };
+     let env = match loaded {
+         Ok(e) => e,
+-        Err(env::LoadError::Reject(m)) => finish(1, &format!("rejected: {m}")),
++        // F06 fix-039: load-level (structural) faults are declines too; only the kernel's own checks reject
++        Err(env::LoadError::Reject(m)) => finish(2, &format!("declined: load-level fault (not a kernel verdict): {m}")),
+         Err(env::LoadError::Decline(m)) => finish(2, &format!("declined: {m}")),
+         Err(env::LoadError::IndexInvalid(m)) => finish(2, &format!("index invalid: {m}")),
+     };

@@ -1,0 +1,10 @@
+def myBound : Nat := 10
+theorem helperA : ∀ n : Nat, n < 10 → n ≤ 9 := by sorry
+theorem helperB (n : Nat) (h : n ≤ 9) : n * n ≤ 81 ∧ True := by
+  constructor
+  · sorry
+  · trivial
+theorem target1 : ∀ n : Nat, n < myBound → n * n < 100 := by
+  intro n h
+  have h2 := (helperB n (helperA n h)).1
+  omega

@@ -1,0 +1,54 @@
+--- $LIGHT_LEAN/fastverify/pipeline/sched_r.py
++++ fixed/sched_r.py
+@@ -73,6 +73,31 @@
+ OFFICIAL_LEAN = CFG.get('OFFICIAL_LEAN') or None
+ 
+ 
++_ismod = {}
++def is_module_file(m):
++    """(finding 041): does the module's header start with the `module` keyword (Lean module system)?
++    Comment-aware: skips whitespace, `--` line comments and (nested, multi-line) `/- ... -/` block/doc comments."""
++    if m not in _ismod:
++        r = False
++        try:
++            with open(os.path.join(SRC, mods_global[m]), encoding='utf-8', errors='replace') as f: text = f.read()
++            i, n, depth = 0, len(text), 0
++            while i < n:
++                if depth:
++                    if text.startswith('/-', i): depth += 1; i += 2
++                    elif text.startswith('-/', i): depth -= 1; i += 2
++                    else: i += 1
++                elif text[i].isspace(): i += 1
++                elif text.startswith('/-', i): depth = 1; i += 2
++                elif text.startswith('--', i):
++                    j = text.find('\n', i); i = n if j < 0 else j + 1
++                else:
++                    mm = re.match(r'\S+', text[i:i + 64]); r = bool(mm) and mm.group(0) == 'module'; break
++        except OSError: pass
++        _ismod[m] = r
++    return _ismod[m]
++mods_global = {}
++
+ def header_imports(path):
+     imps, depth = [], 0
+     with open(path, encoding='utf-8', errors='replace') as f:
+@@ -100,6 +125,7 @@
+     if CFG.get('DEPS_JSON') and os.path.exists(CFG['DEPS_JSON']):   # R07: graph computed by prep.py (same header rules)
+         dj = json.load(open(CFG['DEPS_JSON']))
+         mods = {m: v[0] for m, v in dj.items()}; deps = {m: v[1] for m, v in dj.items()}; del dj
++        mods_global.update(mods)
+     else:
+         for root, _, files in os.walk(SRC):
+             for fn in files:
+@@ -323,6 +349,11 @@
+                 if R['m'] in released: continue
+                 try: st = os.stat(R['olean'])
+                 except FileNotFoundError: continue
++                # fix for finding 041: a Lean `module` file writes .olean, .olean.server, .olean.private, .ir.sig, .ir
++                # one after another; release only when every part exists
++                if is_module_file(R['m']):
++                    stem = R['olean'][:-len('.olean')]
++                    if not all(os.path.exists(stem + x) for x in ('.olean.server', '.olean.private', '.ir.sig', '.ir')): continue
+                 if st.st_mtime >= R['t0'] - 1:
+                     R['t_rel'] = time.time(); release(R['m'], R['t_rel']); progressed = True
+                     if R.get('core') is not None: free_res.append(R['core']); R['core_used'] = R['core']; R['core'] = None

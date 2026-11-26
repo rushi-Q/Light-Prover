@@ -1,0 +1,7 @@
+name = "mini"
+srcDir = "lib"
+defaultTargets = ["Main"]
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]

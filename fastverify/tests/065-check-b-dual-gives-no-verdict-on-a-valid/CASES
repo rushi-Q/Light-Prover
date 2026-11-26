@@ -1,0 +1,4 @@
+# 065: Nat literal with > 65,536 digits in the closure: official ACCEPTS (control 65,536 digits)
+lit-65535   | challenge.export | solution-65535.export     | comparator.json | 0 | plain
+lit-65536   | challenge.export | solution-65536.export     | comparator.json | 0 | plain
+ordinary    | challenge.export | ordinary/solution.export  | comparator.json | 0 | plain

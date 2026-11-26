@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Light-Prover - sound verification of Lean 4 proofs</title>
+<meta name="description" content="Sound verification of Lean 4 proofs against a pinned challenge, with the official comparator's checks and an untrusted fast build and export: for proof developers, AI prover attempts, CI and the final check of large proofs.">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+    --hair: #e1e0d9; --ring: rgba(11,11,11,0.10); --accent: #2a78d6; --accent-soft: #eaf2fc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+      --hair: #2c2c2a; --ring: rgba(255,255,255,0.10); --accent: #3987e5; --accent-soft: #17263a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink);
+         font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 28px; }
+  header { padding: 72px 0 28px; }
+  .eyebrow { color: var(--accent); font-weight: 700; letter-spacing: .14em; font-size: 13px; }
+  h1 { font-size: clamp(30px, 4.2vw, 48px); line-height: 1.12; margin: 14px 0 18px; font-weight: 650; max-width: 920px; }
+  .lede { color: var(--ink2); font-size: 18.5px; max-width: 900px; margin: 0; }
+  .cta { margin: 28px 0 0; display: flex; gap: 12px; flex-wrap: wrap; }
+  .cta a { text-decoration: none; padding: 10px 18px; border-radius: 999px; font-weight: 600; font-size: 15px; }
+  .cta .primary { background: var(--accent); color: #fff; }
+  .cta .ghost { border: 1px solid var(--ring); color: var(--ink); background: var(--surface); }
+  figure { margin: 36px 0; }
+  figure object, figure img { width: 100%; height: auto; display: block; }
+  .theme-dark { display: none; }
+  @media (prefers-color-scheme: dark) { .theme-light { display: none; } .theme-dark { display: block; } }
+  section { padding: 40px 0; border-top: 1px solid var(--hair); }
+  h2 { font-size: 26px; margin: 0 0 8px; font-weight: 650; }
+  .sub { color: var(--ink2); margin: 0 0 26px; max-width: 860px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 14px; padding: 20px 22px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--ink2); font-size: 15px; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(520px, 1fr)); gap: 22px; }
+  .charts figure { margin: 0; }
+  pre { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px 18px;
+        overflow-x: auto; font: 13.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
+  .trust { background: var(--accent-soft); border-radius: 14px; padding: 22px 24px; }
+  .trust strong { color: var(--accent); }
+  details.tables { margin-top: 18px; }
+  details.tables summary { cursor: pointer; color: var(--ink2); }
+  details.tables table { border-collapse: collapse; margin: 14px 0 20px; font-size: 14px; }
+  details.tables caption { text-align: left; font-weight: 600; padding-bottom: 6px; color: var(--ink); }
+  details.tables th, details.tables td { border-bottom: 1px solid var(--hair); padding: 4px 14px 4px 0; text-align: left; }
+  details.tables th { color: var(--ink2); font-weight: 600; }
+  .scope td, .scope th { border-bottom: 1px solid var(--hair); padding: 6px 14px 6px 0; text-align: left; vertical-align: top; }
+  .scope { border-collapse: collapse; font-size: 15px; }
+  footer { padding: 36px 0 60px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--hair); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">LIGHT-PROVER</div>
+    <h1>Sound verification of Lean&nbsp;4 proofs with the official comparator's checks, measured faster on large proofs.</h1>
+    <p class="lede">Light-Prover checks a project against a pinned challenge: the target statements and axioms are compared
+      by the official comparator code, and every declaration they depend on is checked by the unmodified official Lean
+      kernel sources and by an independent second kernel. The build and the export in front of that judge are optimized
+      for time and memory and are not trusted. For proof developers, AI provers and RL pipelines, CI on proof
+      repositories, and the final check of large proofs. Linux x86-64; not yet externally audited.</p>
+    <div class="cta">
+      <a class="primary" href="../README.md">Read the README</a>
+      <a class="ghost" href="../docs/getting-started.md">Install</a>
+      <a class="ghost" href="../docs/user-guide.md">User guide</a>
+      <a class="ghost" href="../docs/benchmarks.md">Benchmarks</a>
+    </div>
+    <figure aria-label="The Light-Prover framework">
+      <object class="theme-light" type="image/svg+xml" data="assets/framework-light.svg">The Light-Prover framework</object>
+      <object class="theme-dark" type="image/svg+xml" data="assets/framework-dark.svg">The Light-Prover framework</object>
+    </figure>
+  </header>
+
+  <section>
+    <h2>Made for real workflows</h2>
+    <p class="sub">The same trusted judge behind every interface, from a single proof attempt to a 175,000-module proof.</p>
+    <div class="grid">
+      <div class="card"><h3>Proof engineering</h3><p>Sound verdicts on every change, and CONDITIONAL verdicts that name the open <code>sorry</code> lemmas while a proof is still being written.</p></div>
+      <div class="card"><h3>AI provers and RL</h3><p>A sound verdict per attempt over CLI, HTTP or MCP; attempts that compile but do not prove the pinned statement are rejected.</p></div>
+      <div class="card"><h3>CI on proof repositories</h3><p>A PR gate with SARIF output and replays of real development histories (experimental in v0.1).</p></div>
+      <div class="card"><h3>Final sign-off</h3><p>Verification of large proofs from sources on one server, or of an existing export within a 64&nbsp;GB or 128&nbsp;GB memory limit (24-32 threads) with a low-memory judge.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Measurements</h2>
+    <p class="sub">Each chart states its machine, threads and number of runs. Not every verdict equals the official one: the disagreements and no-verdict cases are listed with the full conditions in the <a href="../docs/benchmarks.md#other-projects">benchmarks page</a>.</p>
+    <!-- every chart value lives in webpage/charts/data.json; re-run make_charts.py after a change -->
+    <div class="charts">
+      <figure><object class="theme-light" type="image/svg+xml" data="assets/rh-timelapse-light.svg">Time to a verified Riemann Hypothesis proof: Light-Prover 1,811.9 s, official checker (b) 16.1 h, official comparator (a) 55.7 h</object>
+              <object class="theme-dark" type="image/svg+xml" data="assets/rh-timelapse-dark.svg">Time to a verified Riemann Hypothesis proof: Light-Prover 1,811.9 s, official checker (b) 16.1 h, official comparator (a) 55.7 h</object></figure>
+      <figure><object class="theme-light" type="image/svg+xml" data="assets/rh-stages-light.svg">Riemann Hypothesis proof: time per stage, official tools and Light-Prover</object>
+              <object class="theme-dark" type="image/svg+xml" data="assets/rh-stages-dark.svg">Riemann Hypothesis proof: time per stage, official tools and Light-Prover</object></figure>
+      <figure><object class="theme-light" type="image/svg+xml" data="assets/judge-light.svg">Judging the Riemann Hypothesis export on different machines and memory limits</object>
+              <object class="theme-dark" type="image/svg+xml" data="assets/judge-dark.svg">Judging the Riemann Hypothesis export on different machines and memory limits</object></figure>
+      <figure><object class="theme-light" type="image/svg+xml" data="assets/projects-light.svg">Official time / Light-Prover time, other projects</object>
+              <object class="theme-dark" type="image/svg+xml" data="assets/projects-dark.svg">Official time / Light-Prover time, other projects</object></figure>
+    </div>
+    <details class="tables"><summary>Table view of the charts</summary>
+<!-- CHART-TABLES:BEGIN -->
+<table><caption>Riemann Hypothesis proof: time per stage, official tools and Light-Prover</caption><thead><tr><th>stage</th><th>official tools</th><th>Light-Prover</th><th>ratio</th></tr></thead><tbody><tr><td>Build</td><td>5,222 s</td><td>1,338.1 s</td><td>3.9x</td></tr><tr><td>Export</td><td>5,306 s</td><td>25.3 s</td><td>209.7x</td></tr><tr><td>Judge (a)</td><td>52.7 h</td><td>437.5 s</td><td>434.1x</td></tr><tr><td>Judge (b)</td><td>13.2 h</td><td>437.5 s</td><td>108.7x</td></tr><tr><td>Total with (a)</td><td>55.7 h</td><td>1,811.9 s</td><td>110.6x</td></tr><tr><td>Total with (b)</td><td>16.1 h</td><td>1,811.9 s</td><td>32.1x</td></tr></tbody></table>
+<table><caption>Judging the 61.6 GB Riemann Hypothesis export</caption><thead><tr><th>machine</th><th>judge</th><th>time</th></tr></thead><tbody><tr><td>server A, 384 threads</td><td>sound judge, median of 2</td><td>423.2 s</td></tr><tr><td>server A, 192 threads</td><td>sound judge</td><td>503.9 s</td></tr><tr><td>server A, 64 threads</td><td>sound judge</td><td>827.1 s</td></tr><tr><td>machine B, 192 threads</td><td>sound judge</td><td>1,315.9 s</td></tr><tr><td>machine C, 192 threads</td><td>sound judge, first run</td><td>1,584.8 s</td></tr><tr><td>machine C, 192 threads</td><td>sound judge, second run</td><td>1,086.6 s</td></tr><tr><td>server A, 32 threads</td><td>low-memory judge, 128 GB, with mutant checks</td><td>1,297 s</td></tr><tr><td>server A, 32 threads</td><td>low-memory judge, 128 GB, second run</td><td>1,589.0 s</td></tr><tr><td>server A, 24 threads</td><td>ultra-low-memory judge, 64 GB</td><td>4,265.6 s</td></tr></tbody></table>
+<table><caption>Official time / Light-Prover time, other projects</caption><thead><tr><th>project</th><th>official flow</th><th>Light-Prover</th><th>ratio</th></tr></thead><tbody><tr><td>flt-regular *</td><td>367.75 s</td><td>59.6 s</td><td>6.2x</td></tr><tr><td>sphere-eversion</td><td>291.24 s</td><td>141 s</td><td>2.1x</td></tr><tr><td>PFR *</td><td>193.04 s</td><td>105.7 s</td><td>1.8x</td></tr><tr><td>PrimeNumberTheoremAnd</td><td>520.02 s</td><td>303 s</td><td>1.7x</td></tr><tr><td>Carleson</td><td>263.03 s</td><td>166 s</td><td>1.6x</td></tr><tr><td>openai/math, 4 new challenges</td><td>6,325 s</td><td>4,551 s</td><td>1.4x</td></tr><tr><td>Aeneas examples</td><td>212.2 s</td><td>214.2 s</td><td>1.0x</td></tr><tr><td>AxiomMath BerkovichUncu</td><td>32.27 s</td><td>51 s</td><td>0.6x</td></tr><tr><td>LNSym</td><td>151.1 s</td><td>249.1 s</td><td>0.6x</td></tr></tbody></table>
+<!-- CHART-TABLES:END -->
+    </details>
+  </section>
+
+  <section>
+    <h2>What is trusted</h2>
+    <div class="trust"><p><strong>Only the judge is trusted:</strong> the pinned official challenge and comparator
+      configuration, the official comparator code, the unmodified official Lean kernel sources (driven by Light-Prover's
+      reviewed reader, parallel replay and wiring) and a mandatory independent second kernel. The fast build, the native
+      exporter, the schedulers, caches and services are untrusted producers: a bug there can cost a verdict but cannot
+      turn an invalid proof into ACCEPTED. <a href="../docs/concepts/soundness.md">Soundness model</a>.</p></div>
+  </section>
+
+  <section>
+    <h2>In v0.1</h2>
+    <table class="scope">
+      <tr><th>Stable</th><td>sound judge (presets <code>sound-auto</code>, <code>sound</code>); low-memory, ultra-low-memory and Lean 4.37.0-rc1 judges; <code>fv verify</code>, <code>fv check</code>; conditional verdicts (frontier run / verify); MCP verify tools; <code>fvserve</code>, <code>batchverify</code>; HTTP API with an explicit <code>theorem</code></td></tr>
+      <tr><th>Opt-in</th><td>extra veto kernels <code>con-leche</code> and <code>nanoda</code>; <code>--require-sorried-holes</code></td></tr>
+      <tr><th>Experimental</th><td>may change; opt-in flag where one exists: notary preset, <code>fv watch</code>, <code>fv triage</code>, <code>fv ci</code> and the CI action (each <code>--experimental</code>); sub-challenges; the incremental machinery (incremental entry points run cold without it); theorem inference of the HTTP API</td></tr>
+      <tr><th>Not in v0.1</th><td>the warm delta judge. fvwork, fvserve and incr-reverify refuse it; the standalone <code>check/warm/fvcheckd.py</code> is research code, is not sound in its current form, and is not used by any entry point.</td></tr>
+      <tr><th>Retired</th><td>legacy judge check A; presets <code>fast-exact</code> and <code>default</code></td></tr>
+    </table>
+    <p class="sub">Known limitations: <a href="../docs/limitations.md">limitations</a>.</p>
+  </section>
+
+  <section>
+    <h2>Get started</h2>
+<pre>git clone &lt;repository-url&gt; Light-Prover &amp;&amp; cd Light-Prover
+python3 -I fastverify/tools/configure.py --elan-home "${ELAN_HOME:-$HOME/.elan}" --light-lean "$PWD"
+fastverify/bin/fastverify ./my-repo ./challenge ./out --preset sound-auto --challenge-sha256 "$PIN" --comparator-sha256 "$CPIN"</pre>
+    <p class="sub"><code>$PIN</code> and <code>$CPIN</code> are the sha256 of the official challenge export and of its comparator configuration; both are required, because the configuration decides which statements and axioms are checked. Building the pinned components and the first run: <a href="../docs/getting-started.md">getting-started guide</a>.</p>
+  </section>
+
+  <footer>Light-Prover v0.1.0 · Apache License 2.0 · the Riemann Hypothesis proof is not redistributed (published without a license by its author)</footer>
+</div>
+</body>
+</html>

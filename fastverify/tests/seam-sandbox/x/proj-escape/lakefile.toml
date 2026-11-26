@@ -1,0 +1,5 @@
+name = "escape"
+defaultTargets = ["Solution"]
+
+[[lean_lib]]
+name = "Solution"

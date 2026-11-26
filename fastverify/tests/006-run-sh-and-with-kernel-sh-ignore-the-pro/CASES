@@ -1,0 +1,3 @@
+# 006: the project's comparator.json (not a hard-coded RH config) decides theorems / axioms
+constr-classical-em | toy/constr/challenge.export | toy/constr/solution.export | ../cfg-constr.json | 1 | plain
+other-theorem-names | toy/names/challenge.export  | toy/names/solution.export  | ../cfg-names.json  | 0 | plain

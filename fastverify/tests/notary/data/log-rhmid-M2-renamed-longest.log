@@ -1,0 +1,17 @@
+[pchk] read 2002 ms, markPersistent 9 ms
+[pchk] parse 2012 ms, 112954 constants
+[pchk] 279 priority names
+[pchk 106 ms] remaining built, 112951 constants
+[pchk 248 ms] deps done
+[pchk 775 ms] walk 1 done, 109167 jobs
+[pchk 1074 ms] inductives learned, 786 blocks differ from the export
+[pchk 1824 ms] walk 2 done, 109167 jobs
+[pchk 16425 ms] checks done
+[pchk 16425 ms] workers finished between 15266 and 16425 ms; longest job 4873 ms (Foo.interrupted_sum, walk index 81940 of 109167)
+Lean default kernel rejects the solution: while replaying declaration 'GlobalTheory.CompanionTheory.SiegelRed.siegelSetUnitary':
+(kernel) declaration type mismatch, 'GlobalTheory.CompanionTheory.SiegelRed.siegelSetUnitary' has type
+  Prop
+but it is expected to have type
+  GlobalTheory.Published.SiegelSetUnitary
+[checkSoundLowMem] verdict REJECTED (exit 1): error: Lean default exited with 1
+{"checker":"checkSoundLowMem","verdict":"REJECTED","exit":1,"wall_s":26.123837737,"reason":"error: Lean default exited with 1","ccmp_rc":1,"threads":32,"effective_threads":32,"mode":"sequential-lowmem","version":"sound-lowmem-v1 (D15 sequential low-memory sound check: ccmp_lowmem ce3a0c51 [GLIBC_2.17, 2-pass mmap CSR + selective Expr + official compareAt] -> pleanchecker c4730cc9 [s03h] -> gruszka 7634f2fe [checkB v4])","wiring":"check-sound-lowmem-v1-D15","basis":"challenge export as given (sha256 checked by the caller); statements + axioms: official Lean 4.36 comparator judge code via 2-pass low-memory streaming reader (ccmp-lowmem compareAt + checkAxioms); kernel 1: official Lean 4.36 kernel libraries (pleanchecker parallel Lean.Replay walk); kernel 2: gruszka (independent); legs executed sequentially in separate sandboxes","binaries_sha256":{"ccmp_lowmem":"ce3a0c51a632b1c49f611146ba8a2f5548908498ac794b9565341905c5b020e7","pleanchecker":"c4730cc9543b066f4849ccb50227813fb63fc39a96811c46e4a2dd26d90a19d0","gruszka":"7634f2fe0d2ea625a3c68c9866a71a44691eeb1ea990f4d4e1142da7c0c896db","selftest_comparator":"9c77b8d2c3c5fb92a8681e5f9d9d9bde0a8ff0fe35ecc5a31ac3024ff4f12802","selftest_challenge":"f83cfdd3029814bd61d88e808b2c2e33344ca893214cfec0faa15c66c1048af0","selftest_good":"cbc6a26ce8c2c9b4e97085d6822c33026eb36e15ba24a5be0ec8f25746e4d281","selftest_bad":"a48f2d1c4c8e6d5b4be291f72a64926c9afa8398508e02fb68cec2df73a0513f"},"leg_ms":{"compare (parse, compareAt, checkAxioms)": 3303, "kernel Lean default": 18788},"legs":{"compare": {"rc": 0, "ms": 3303, "message": "Comparison and axiom check passed!"}, "lean": {"rc": 1, "ms": 18788, "message": "Lean default kernel rejects the solution: while replaying declaration 'GlobalTheory.CompanionTheory.SiegelRed.siegelSetUnitary':\n(kernel) declaration type mismatch, 'GlobalTheory.CompanionTheory.SiegelRed.siegelSetUnitary' has type"}, "k2": {"rc": null, "ms": null, "message": null}},"compare_ms":3303,"inputs":{"export":{"size":1104038853,"private":"copy"},"challenge":{"size":991846,"private":"copy"}},"private_inputs_asserted":0}

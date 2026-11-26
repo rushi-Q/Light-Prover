@@ -1,0 +1,1 @@
+{"challenge_module":"C","solution_module":"S","theorem_names":[],"definition_names":["secret"],"permitted_axioms":["propext","Quot.sound","Classical.choice"]}

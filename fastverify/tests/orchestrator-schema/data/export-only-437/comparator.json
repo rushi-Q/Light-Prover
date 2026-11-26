@@ -1,0 +1,1 @@
+{"challenge_module": "Challenge", "solution_module": "Main", "theorem_names": ["qaAddZero"], "definition_names": [], "permitted_axioms": ["propext", "Quot.sound", "Classical.choice"], "external_kernels": {"nanoda": ["nanoda_bin"]}}

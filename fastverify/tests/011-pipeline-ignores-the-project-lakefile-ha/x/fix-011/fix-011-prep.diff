@@ -1,0 +1,17 @@
+--- $LIGHT_LEAN/fastverify/pipeline/prep.py
++++ prep.py
+@@ -84,9 +84,13 @@
+     src, dst, logd, jobs = a[0], a[1], a[2], int(a[3])
+     t0 = time.time()
+     rels = []
+-    for root, _, fs in os.walk(src):
++    import shutil
++    for root, _, fs in os.walk(src, followlinks=True):   # fix-011: follow symlinked dirs like lake
+         for fn in fs:
+             if fn.endswith('.lean'): rels.append(os.path.relpath(os.path.join(root, fn), src))
++            else:   # fix-011: copy resources too (include_str etc.)
++                r = os.path.relpath(os.path.join(root, fn), src); os.makedirs(os.path.dirname(os.path.join(dst, r)), exist_ok=True)
++                shutil.copyfile(os.path.join(root, fn), os.path.join(dst, r))
+     rels.sort()
+     t1 = time.time()
+     with ProcessPoolExecutor(jobs) as ex:

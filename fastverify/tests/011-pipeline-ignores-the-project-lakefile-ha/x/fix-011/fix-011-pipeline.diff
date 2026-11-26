@@ -1,0 +1,20 @@
+--- $LIGHT_LEAN/fastverify/pipeline/pipeline.sh
++++ pipeline.sh
+@@ -66,6 +66,9 @@
+ if [ "$NATIVE_MODE" = on ]; then bash "$D/native.sh" "$PKGSRC" "$W/log/native" "$NT" "$W/log/native.ready" "${LEAN_TC:-}" > "$W/log/native.log" 2>&1 & NPID=$!; fi
+ DENY=$(cat "$D/deny.txt" 2>/dev/null || echo eof)
+ python3 -I "$D/prep.py" "$PRISTINE/src" "$W/proj/src" "$W/log" "$PJ" $([ "$DENY" = eof ] || echo --no-deny)
++# fix-011 prototype: per-module args + module set from the project's lakefile; no package cache unless required
++python3 -I "$D/mkargs.py" "$W/proj" "$W/log"
++if [ "$(cat "$W/log/requires.txt")" = 0 ]; then mkdir -p "$W/proj/.lake/emptypkg"; PKGLIB="$W/proj/.lake/emptypkg"; fi
+ LOCALTC=
+ if [ "$PKGMODE" = local ]; then
+   okc=1; for p in $CPIDS; do wait "$p" || okc=0; done
+@@ -86,6 +89,7 @@
+ if LOCALTC: cfg["LEAN_PATH_PRE"] = LOCALTC   # R05: node-local Init/Lean/Std copy first on LEAN_PATH (same bytes)
+ if os.environ.get("LEAN_TC"): cfg["OFFICIAL_LEAN"] = os.environ["T33"] + "/bin/lean"   # R03 RETRY_OFFICIAL fallback
+ if NM == "on": cfg["NATIVE_READY"] = f"{W}/log/native.ready"
++if os.path.exists(f"{W}/log/args.json"): cfg["ARGS_JSON"] = f"{W}/log/args.json"   # fix-011
+ x = os.path.join(D, "sched_extra.json")
+ if os.path.exists(x): cfg.update(json.load(open(x)))
+ json.dump(cfg, open(f"{W}/log/sched_config.json", "w"), indent=1); print(json.dumps(cfg))

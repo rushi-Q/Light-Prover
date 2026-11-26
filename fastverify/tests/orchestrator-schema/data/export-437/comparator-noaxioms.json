@@ -1,0 +1,9 @@
+{
+  "challenge_module": "Challenge",
+  "solution_module": "Main",
+  "theorem_names": [
+    "Check.str_size"
+  ],
+  "definition_names": [],
+  "permitted_axioms": []
+}

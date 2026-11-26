@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /opt/rh/gcc-toolset-12/root/usr/bin/g++ -fPIE -pie "$@" -static-libstdc++ -static-libgcc -Wl,--gc-sections -L/opt/glibc217/lib

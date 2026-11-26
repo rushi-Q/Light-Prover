@@ -1,0 +1,15 @@
+#!/bin/bash
+# Run the REAL fast toolchain binary /scratch/fastverify/tc/stage1/bin/lean (needs glibc>=2.38) on a host with glibc 2.35
+# inside a throw-away ubuntu:24.04 container: no network, own uid, /scratch/fastverify read-only, the image's own libgmp 6.3.0
+# (as on the AMD production host) and the host libuv
+# bind-mounted (the only extra libs it needs). The current directory and every directory named in $FL_BIND (colon-separated)
+# are bind-mounted at the same path; LEAN_PATH and every other LEAN_* variable (LEAN_ABORT_ON_PANIC, LEAN_INTERP_*, LEAN_NUM_THREADS) are passed through.
+# usage: fastlean [lean args...]    (env: LEAN_PATH, FL_BIND)
+set -u
+# the image is loaded from a saved copy (no registry access) if this host's docker does not have it
+IMG=${FV_DOCKER_IMAGE:-$LIGHT_LEAN/repro-bin/ubuntu-24.04.tar}
+docker image inspect ubuntu:24.04 >/dev/null 2>&1 || docker load -q -i "$IMG" >/dev/null 2>&1 || { echo "fastlean: cannot load $IMG" >&2; exit 126; }
+B="-v /scratch/fastverify:/scratch/fastverify:ro -v /lib/x86_64-linux-gnu/libuv.so.1:/hostlib/libuv.so.1:ro -v $PWD:$PWD"
+IFS=: read -ra DS <<< "${FL_BIND:-}"; for d in "${DS[@]}"; do [ -n "$d" ] && B="$B -v $d:$d"; done
+exec docker run --rm -i --pull never --network none -u "$(id -u):$(id -g)" $B -w "$PWD" -e LEAN_PATH="${LEAN_PATH:-}" $(env | grep -o "^LEAN_[A-Z_]*=[^ ]*" | grep -v "^LEAN_PATH=" | sed "s/^/-e /" | tr "\n" " ") -e LD_LIBRARY_PATH=/hostlib \
+  ubuntu:24.04 /scratch/fastverify/tc/stage1/bin/lean "$@"

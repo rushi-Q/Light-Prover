@@ -1,0 +1,5 @@
+#!/bin/sh
+L=-L/opt/glibc217/lib
+for a in "$@"; do case "$a" in -c|-S|-E|-M|-MM) L=;; esac; done
+D=$(date -u -d @${SOURCE_DATE_EPOCH:-0} "+%b %e %Y"); T=$(date -u -d @${SOURCE_DATE_EPOCH:-0} +%H:%M:%S)
+exec "${FVCC_CENV14:-${PORT_WORK:?work root of the portable-toolchain recipe, or set FVCC_CENV14 (required)}/cenv14}/bin/clang-14" -Wno-builtin-macro-redefined "-D__DATE__=\"$D\"" "-D__TIME__=\"$T\"" --driver-mode=g++ -fPIE -pie --target=x86_64-pc-linux-gnu --sysroot=/ --gcc-toolchain=/opt/rh/gcc-toolset-12/root/usr $L "$@"

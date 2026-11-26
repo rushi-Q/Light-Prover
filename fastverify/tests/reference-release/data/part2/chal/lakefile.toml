@@ -1,0 +1,5 @@
+name = "challenge"
+defaultTargets = ["M3"]
+
+[[lean_lib]]
+name = "M3"

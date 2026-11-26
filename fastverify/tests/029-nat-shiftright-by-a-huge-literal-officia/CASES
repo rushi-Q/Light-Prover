@@ -1,0 +1,3 @@
+# 029: Nat.shiftRight 5 (2^64) by decide: official+nanoda aborts after ~4-6 min (recorded '*'), Lean kernel only accepts
+shr-nanoda   | toy/shr/challenge.export | toy/shr/solution.export | @/rh5-nanoda.json   | 1* | plain
+shr-leanonly | toy/shr/challenge.export | toy/shr/solution.export | @/rh5-leanonly.json | 0  | plain

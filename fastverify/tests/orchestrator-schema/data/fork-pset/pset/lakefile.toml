@@ -1,0 +1,4 @@
+name = "pset"
+defaultTargets = ["Challenge"]
+[[lean_lib]]
+name = "Challenge"

@@ -1,0 +1,6 @@
+# 049: a nano-lean.toml (or any file) in the caller's working directory must not change the verdict
+clean     | challenge.export | solution.export | comparator.json | 0 | plain
+steps1    | challenge.export | solution.export | comparator.json | 0 | cwd:../cwd-steps1
+threads0  | challenge.export | solution.export | comparator.json | 0 | cwd:../cwd-threads0
+termcore  | challenge.export | solution.export | comparator.json | 0 | cwd:../cwd-termcore
+cache     | challenge.export | solution.export | comparator.json | 0 | cwd:../cwd-cache

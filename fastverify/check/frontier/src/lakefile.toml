@@ -1,0 +1,22 @@
+name = "fvfrontier"
+defaultTargets = ["fvfrontier-judge", "fvfrontier-prep"]
+
+# C05's fast export reader, VERBATIM copy of publish/Light-Prover/sources/pchk/FastParse.lean
+# (sha256 1752880ba52f0873006832360b7001c403e4dff1a000270d5123e67f8251beff) = the reader of the pinned ccmp
+[[lean_lib]]
+name = "FastParse"
+
+[[lean_lib]]
+name = "FrontierJudge"
+
+[[lean_exe]]
+name = "fvfrontier-judge"
+root = "FrontierMain"
+
+# UNTRUSTED fast preparer of tools/frontier/frontier.py (scan + mint); never decides a verdict
+[[lean_lib]]
+name = "FrontierPrep"
+
+[[lean_exe]]
+name = "fvfrontier-prep"
+root = "PrepMain"

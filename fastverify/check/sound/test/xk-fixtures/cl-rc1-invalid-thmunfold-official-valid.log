@@ -1,0 +1,5 @@
+con-leche: stats: phases: parse 5.0s (index 0.0s), check 3.8s
+con-leche: stats: check pool: 3.853s wall, 8 workers, 45540 records, busy 30.659s (99.4%); tail 0.024s after the last start, 8 busy then, 0.054s worker-time in it (27.4%)
+con-leche: stats: slowest checks: 0.210s theorem _private.Init.Data.Array.Extract.0.Array.extract_append._proof_1_1 (#4412); 0.208s theorem _private.Init.Data.Vector.Extract.0.Vector.extract_append._proof_1 (#42537); 0.135s theorem _private.Init.Data.Array.Extract.0.Array.extract_append_extract._proof_1_1 (#4000); 0.130s theorem _private.Init.Data.Vector.Extract.0.Vector.extract_append_extract._proof_1 (#36198); 0.111s theorem _private.Init.Data.Array.Extract.0.Array.extract_append._proof_1_4 (#4415)
+con-leche: stats: peak RSS 0.50 GiB
+con-leche: invalid: application type mismatch [at theorem k04t._proof_1_1, fold position 45539] (--verified) t=8.8s

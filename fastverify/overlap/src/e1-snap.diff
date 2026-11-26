@@ -1,0 +1,210 @@
+diff --git a/Main.lean b/Main.lean
+index 041531c..73bc5ec 100644
+--- a/Main.lean
++++ b/Main.lean
+@@ -25,6 +25,13 @@ def main (args : List String) : IO UInt32 := do
+   unless opts.isEmpty do
+     IO.eprintln "lean4export (native-only): options are not supported natively, declining"
+     return 2
++  -- S08 (team S, snapshot mode): `@FILE` as the only module argument = the module names listed in FILE, one per line
++  let imports ← match imports with
++    | [one] =>
++      if one.startsWith "@" then
++        pure ((← IO.FS.lines (System.FilePath.mk (toString (one.drop 1)))).toList.filter (fun l => !l.isEmpty))
++      else pure [one]
++    | _ => pure imports
+   let imports := imports.toArray.map fun mod => { module := Syntax.decodeNameLit ("`" ++ mod) |>.get! : Import }
+   let wholeEnv := constants.tail?.isNone
+   let targets := (constants.tail?.getD []).toArray.map fun c => Syntax.decodeNameLit ("`" ++ c) |>.get!
+diff --git a/native/fast_export.cpp b/native/fast_export.cpp
+index 5517a3d..4ece375 100644
+--- a/native/fast_export.cpp
++++ b/native/fast_export.cpp
+@@ -60,6 +60,29 @@ static_assert(sizeof(F04_EXPECTED_GITHASH) == 41, "F04_EXPECTED_GITHASH must be
+     _exit(1);
+ }
+ 
++// S08 (team S): read a text file as lines (no trailing newline, empty lines dropped); missing file -> die (decline)
++static std::vector<std::string> s08_read_lines(const char* path) {
++    std::vector<std::string> out;
++    FILE* f = fopen(path, "rb");
++    if (!f) die(std::string("cannot open ") + path);
++    std::string cur;
++    char buf[1 << 16];
++    size_t k;
++    while ((k = fread(buf, 1, sizeof buf, f)) > 0) {
++        for (size_t i = 0; i < k; i++) {
++            if (buf[i] == '\n') {
++                if (!cur.empty()) out.push_back(cur);
++                cur.clear();
++            } else {
++                cur.push_back(buf[i]);
++            }
++        }
++    }
++    if (!cur.empty()) out.push_back(cur);
++    fclose(f);
++    return out;
++}
++
+ // X01 fix (findings 010): strings that are not valid UTF-8 cannot be rendered byte-for-byte like the official exporter
+ // (Json.renderString decodes and re-encodes them); give up so the reference implementation writes them.
+ static bool utf8_ok(const uint8_t* p, size_t n) {
+@@ -977,6 +1000,43 @@ struct In {
+             i = j + 1;
+         }
+     }
++    // S08: like lookup_name_str, but an all-digit component is first looked up as a numeric component (name_str prints
++    // numeric components in decimal, e.g. the `0` of private names), then as a string component
++    uint32_t lookup_name_str_num(const std::string& s) {
++        uint32_t cur = 0;
++        size_t i = 0;
++        while (true) {
++            size_t j = s.find('.', i);
++            std::string comp = s.substr(i, j == std::string::npos ? std::string::npos : j - i);
++            bool digits = !comp.empty() && comp.size() <= 18;
++            for (char ch : comp) if (ch < '0' || ch > '9') digits = false;
++            uint32_t next = NONE;
++            if (digits) {
++                NKey k;
++                k.pre = cur;
++                k.kind = 2;
++                k.ptr = nullptr;
++                k.len = 0;
++                k.num = strtoull(comp.c_str(), nullptr, 10);
++                uint32_t r;
++                if (nmap.get(NKeyT::hash(k), [&](uint32_t i) { return NKeyT::eq(names.p[i].key, k); }, r)) next = r;
++            }
++            if (next == NONE) {
++                NKey k;
++                k.pre = cur;
++                k.kind = 1;
++                k.ptr = (const uint8_t*)comp.data();
++                k.len = (uint32_t)comp.size();
++                k.num = 0;
++                uint32_t r;
++                if (!nmap.get(NKeyT::hash(k), [&](uint32_t i) { return NKeyT::eq(names.p[i].key, k); }, r)) return NONE;
++                next = r;
++            }
++            cur = next;
++            if (j == std::string::npos) return cur;
++            i = j + 1;
++        }
++    }
+     // lookup of a name given as plain components (no insertion)
+     uint32_t lookup_name_arg(const NameArg& n) {
+         uint32_t cur = 0;
+@@ -3994,6 +4054,7 @@ struct PD {
+         unsafe_c.assign(x->cmap.size(), 0);
+         for (uint32_t c = 0; c < x->cmap.size(); c++)
+             if (x->cmap_has(c) && (size_t)c < x->enq.cap && x->enq.p[c].load(std::memory_order_relaxed)) {
++                if (st->is_visited(c)) continue;   // S08 snapshot mode: excluded (already exported) constant
+                 if (x->is_unsafe(x->cmap[c]))
+                     unsafe_c[c] = 1;
+                 else
+@@ -4886,7 +4947,46 @@ static void run(Args& a) {
+     }
+     // ---- targets
+     std::vector<uint32_t> tids;
+-    if (a.whole_env) tids = env_order;
++    // S08 (team S, untrusted SNAPSHOT mode for the overlapped kernel check, env LEAN4EXPORT_SNAP=1, whole-environment
++    // form only): the targets are all constants of the ROOT modules (module order, then constNames order); constants
++    // named in the file LEAN4EXPORT_EXCLUDE (one dotted name per line) are treated as already dumped (not written,
++    // references to them stay); the names of the constants written are listed in the file LEAN4EXPORT_DUMPED.
++    // The output is NOT a lean4export-identical export (it is only ever read by the incremental kernel leg, which
++    // checks everything it ingests); without LEAN4EXPORT_SNAP nothing changes.
++    const char* s08_snapv = getenv("LEAN4EXPORT_SNAP");
++    bool s08_snap = s08_snapv && *s08_snapv && strcmp(s08_snapv, "0") != 0;
++    if (s08_snap) {
++        if (!a.whole_env) die("LEAN4EXPORT_SNAP needs the whole-environment form (no target list)");
++        // S08 targeted snapshots: LEAN4EXPORT_SNAP_TARGETS=FILE (one dotted name per line) -> the targets are those
++        // names that are constants of the loaded environment (others are skipped silently), instead of all constants
++        // of the root modules; their closure is exported as usual (minus LEAN4EXPORT_EXCLUDE)
++        const char* s08_tf = getenv("LEAN4EXPORT_SNAP_TARGETS");
++        if (s08_tf && *s08_tf) {
++            size_t want = 0;
++            for (const std::string& nm : s08_read_lines(s08_tf)) {
++                if (nm.empty()) continue;
++                want++;
++                uint32_t id = x->lookup_name_str_num(nm);
++                if (id != NONE && id < x->cmap.size() && x->cmap[id].m != NONE) tids.push_back(id);
++            }
++            logf("snapshot: %s", std::to_string(tids.size()) + " of " + std::to_string(want) + " target names found");
++        } else {
++        std::vector<std::string> rs;
++        for (auto& r : a.roots) rs.push_back(pretty_comps(r));
++        std::sort(rs.begin(), rs.end());
++        for (size_t k = 0; k < order.size(); k++) {
++            uint32_t mi = order[k];
++            if (!std::binary_search(rs.begin(), rs.end(), mods[mi].name)) continue;
++            P d = mods[mi].data;
++            P names = x->f(mi, d, 1);
++            for (size_t j = 0; j < arr_size(names); j++) {
++                uint32_t nm = x->intern_name(mi, arr_raw(names, j));
++                if (nm != NONE && nm < x->cmap.size() && x->cmap[nm].m != NONE) tids.push_back(nm);
++            }
++        }
++        logf("snapshot: %s", std::to_string(tids.size()) + " root constants of " + std::to_string(rs.size()) + " root modules");
++        }
++    } else if (a.whole_env) tids = env_order;
+     size_t nt = a.whole_env ? 0 : a.targets.size();
+     for (size_t i = 0; i < nt; i++) {
+         uint32_t id = x->lookup_name_arg(a.targets[i]);
+@@ -4899,6 +4999,18 @@ static void run(Args& a) {
+         }
+         tids.push_back(id);
+     }
++    // S08 snapshot mode: constants already exported are excluded BEFORE phase A (not walked, not interned, not dumped)
++    std::vector<uint32_t> s08_exids;
++    if (s08_snap) {
++        if (const char* ex = getenv("LEAN4EXPORT_EXCLUDE")) {
++            for (const std::string& nm : s08_read_lines(ex)) {
++                uint32_t id = x->lookup_name_str_num(nm);
++                if (id == NONE || id >= x->cmap.size()) continue;
++                x->try_enq(id);   // phase A: already "enqueued" -> its closure is not walked from here
++                s08_exids.push_back(id);
++            }
++        }
++    }
+     // ---- phase A (parallel interning of the closure)
+     if (nthreads > 1) {
+         phase_a(x, tids, nthreads);
+@@ -4914,6 +5026,15 @@ static void run(Args& a) {
+     st->exp_n.assign(1, 0);
+     st->exp_l.assign(1, 0);
+     st->out.start(std::min<size_t>(12, std::max<size_t>(4, nthreads / 2)));  // copier threads of the output sink
++    std::vector<uint8_t> s08_excl;
++    if (s08_snap) {
++        for (uint32_t id : s08_exids) {
++            if (id >= s08_excl.size()) s08_excl.resize((size_t)id + (id >> 2) + 4096, 0);
++            s08_excl[id] = 1;
++            st->set_visited(id);
++        }
++        logf("snapshot: %s", std::to_string(s08_exids.size()) + " constants excluded (already exported)");
++    }
+     {
+         // output size estimate ~54 bytes per interned expression/name (Mathlib 56, rh-mid 52 per output line)
+         uint64_t est = 54 * ((uint64_t)x->ec.load() + (uint64_t)x->nc.load());
+@@ -4943,6 +5064,22 @@ static void run(Args& a) {
+         }
+     }
+     st->out.finish();
++    if (s08_snap) {
++        if (const char* dp = getenv("LEAN4EXPORT_DUMPED")) {
++            FILE* df = fopen(dp, "wb");
++            if (!df) die(std::string("cannot write ") + dp);
++            size_t nd = 0;
++            for (uint32_t c = 0; c < st->visited.size(); c++) {
++                if (!st->visited[c] || (c < s08_excl.size() && s08_excl[c])) continue;
++                std::string nm = x->name_str(c);
++                fwrite(nm.data(), 1, nm.size(), df);
++                fputc('\n', df);
++                nd++;
++            }
++            if (fclose(df) != 0) die(std::string("cannot write ") + dp);
++            logf("snapshot: %s", std::to_string(nd) + " constants dumped");
++        }
++    }
+     {
+         struct rusage ru;
+         getrusage(RUSAGE_SELF, &ru);

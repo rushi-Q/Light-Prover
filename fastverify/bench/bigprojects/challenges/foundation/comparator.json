@@ -1,0 +1,14 @@
+{
+ "challenge_module": "Challenge",
+ "solution_module": "Foundation",
+ "theorem_names": [
+  "Nat.iff_lt_exists_add_succ",
+  "Nat.sub_one_lt'"
+ ],
+ "definition_names": [],
+ "permitted_axioms": [
+  "propext",
+  "Quot.sound",
+  "Classical.choice"
+ ]
+}

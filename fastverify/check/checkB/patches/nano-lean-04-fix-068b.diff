@@ -1,0 +1,26 @@
+--- a/src/checker/inductive.rs
++++ b/src/checker/inductive.rs
+@@ -84,10 +84,10 @@
+             return self.check_existing(idx);
+         }
+         let result = self.check_block(block);
+-        if result.is_ok()
+-            || !self.nested_block(block)
+-            || !matches!(self.fail, Some(Failure::Rejected(_)))
+-        {
++        // F06 fix-068b: any block the native check turns down is declined, not only blocks whose RECORD says nested:
++        // Lean 4.36 recomputes numNested / isRec / isReflexive / numIndices and never compares the records, so a forged
++        // numNested = 0 on a nested type (official: accepted) made the plain path reject the nested occurrence.
++        if result.is_ok() || !matches!(self.fail, Some(Failure::Rejected(_))) {
+             return result;
+         }
+         // A nested block the native expansion turns down used to be re-decided by the reference
+@@ -95,7 +95,7 @@
+         // no Mathlib or RH block takes this path (K07: 4.36 conformance).
+         let why = self.fail.as_ref().map_or(String::new(), |f| f.reason().to_string());
+         self.fail = Some(Failure::Declined(Decline::Unsupported(format!(
+-            "nested inductive turned down by the native check: {why}"
++            "inductive block turned down by the native check: {why}"
+         ))));
+         result
+     }

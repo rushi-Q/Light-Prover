@@ -1,0 +1,2 @@
+thread 'thread_2' (7) panicked at src/tc.rs:955:71:
+assertion failed: self.def_eq(u, v)

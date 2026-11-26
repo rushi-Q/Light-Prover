@@ -1,0 +1,7 @@
+{
+  "challenge_module": "Challenge",
+  "solution_module": "Solution",
+  "theorem_names": ["prove_false"],
+  "definition_names": ["Nat.shiftLeft._f"],
+  "permitted_axioms": ["propext", "Quot.sound", "Classical.choice"]
+}

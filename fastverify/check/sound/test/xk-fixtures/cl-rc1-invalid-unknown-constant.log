@@ -1,0 +1,5 @@
+con-leche: stats: phases: parse 0.0s (index 0.0s), check 0.0s
+con-leche: stats: check pool: 0.003s wall, 4 workers, 132 records, busy 0.012s (89.1%); tail 0.000s after the last start, 4 busy then, 0.000s worker-time in it (54.4%)
+con-leche: stats: slowest checks: 0.000s inductive HPow (#40); 0.000s inductive HAdd (#12); 0.000s inductive List (#32); 0.000s def Nat.beq (#127); 0.000s inductive Nat.le (#36)
+con-leche: stats: peak RSS 0.03 GiB
+con-leche: invalid: unknown constant in value of noConfusion_of_Nat [at theorem noConfusion_of_Nat, fold position 131] (--verified) t=0.0s

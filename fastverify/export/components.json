@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "comment": "Pinned binaries of the export stage. native = native-only fail-closed lean4export (source: sources/lean4export-native + export/native-exporter-f04.patch; see fastverify/export/PROVENANCE.md). official = the official lean4export (v4.33.0 tag 15f6055, built with the official v4.33.1 Lake), used on every native decline (same pin as config/components.json). closure_check = independent closure guard run on every native export before it is accepted (exit 0 required, else decline).",
+  "native": {
+    "path": "/scratch/fastverify-next/exporter/lean4export-979c4f8",
+    "sha256": "6b26eb16c45e201dc90af2ad6a876d77a745ee8274c72bb64e85c3bb0c5fe404",
+    "commit": "979c4f8",
+    "lean_version": "Lean (version 4.33.1, x86_64-unknown-linux-gnu, commit 819816b2e0a3bf405af45ae5c7af2491d8f5bee6, Release)",
+    "olean_githash": "819816b2e0a3bf405af45ae5c7af2491d8f5bee6"
+  },
+  "official": {
+    "path": "$LIGHT_LEAN/env/tools/lean4export/.lake/build/bin/lean4export",
+    "sha256": "805ab4cc6a88dcef109644d201c3142261f524aecaf58b04913a9f029e21e9b5"
+  },
+  "closure_check": {
+    "path": "/scratch/fastverify-next/exporter/closure_check-60b84139b18e",
+    "sha256": "60b84139b18e352ddcaf79e36e1c44d79e5636efe26dc3c47f6a727eac4211cc",
+    "source": "export/closure/closure_check.cpp (g++ -O2 -std=c++17 -pthread -static)"
+  },
+  "natives_other": [
+    {
+      "lean_version": "Lean (version 4.36.0, x86_64-unknown-linux-gnu, commit 611c117bfaf7b7ae1cfcf246ce6fba31e8f509e9, Release)",
+      "path": "/scratch/fastverify-next/exporter/lean4export-979c4f8-v4.36.0",
+      "sha256": "bb25a91e10fa83c61e462d4d2fa664a7b20da3370233cdacbc3f1fe16277c0b2",
+      "olean_githash": "611c117bfaf7b7ae1cfcf246ce6fba31e8f509e9",
+      "source": "lean4export-native 979c4f8 (export/native-exporter-f04.patch on lean4export f581123, unchanged) built with the official v4.36.0 lake (rebuilt from a fresh clone with the same sha256: the 4.36 olean layout equals 4.33.1's; the bundled 4.36 leanexport skips unsafe constants only, like lean4export v4.33.0); see export/PROVENANCE-v437.md section 4.36",
+      "official": {
+        "path": "$TC/bin/leanexport",
+        "sha256": "8298d4412a1f8986b5dbfd1d9925211778d8d320fc47b72040c8fdfdd5b603d5"
+      }
+    },
+    {
+      "lean_version": "Lean (version 4.37.0-rc1, x86_64-unknown-linux-gnu, commit 0b77e12952ad39077d80d8bd6b66d601f225c321, Release)",
+      "path": "/scratch/fastverify-next/exporter/lean4export-v4.37.0-rc1-c338a2c",
+      "sha256": "174f3962414c76d79634c9d104c4986f065c86c55c723d66885bb7e5237ae8db",
+      "olean_githash": "0b77e12952ad39077d80d8bd6b66d601f225c321",
+      "source": "lean4export-native 979c4f8 (export/native-exporter-f04.patch on lean4export f581123) + export/native-exporter-d22-v437.patch (olean format v4, ModuleData constant prefix trees of Lean PR #14362 walked like finalizeImport, cached Name.hash verified, whole-env mode declines, IR parts released after validation); lake build with the official v4.37.0-rc1 toolchain (lakefile passes -DFV_OLEAN_V4=1); see export/PROVENANCE-v437.md",
+      "official": {
+        "path": "$TC/bin/leanexport",
+        "sha256": "4f5226680a15811444273975284fcb78cf7f8e6af7afa6312ab41a5b945b8542"
+      }
+    }
+  ]
+}

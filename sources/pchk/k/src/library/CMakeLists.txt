@@ -1,0 +1,19 @@
+add_library(
+  library
+  OBJECT
+  expr_lt.cpp
+  constants.cpp
+  module.cpp
+  dynlib.cpp
+  util.cpp
+  print.cpp
+  init_module.cpp
+  profiling.cpp
+  time_task.cpp
+  formatter.cpp
+  elab_environment.cpp
+  init_attribute.cpp
+  llvm.cpp
+  ir_interpreter.cpp
+  instantiate_mvars.cpp
+)

@@ -1,0 +1,289 @@
+use super::inductive::spine;
+use super::prelude::*;
+use super::{Expr, Level};
+use crate::term::names::{
+    BOOL, BOOL_FALSE, BOOL_TRUE, CHAR, CHAR_OF_NAT, LIST, LIST_CONS, LIST_NIL, NAT, NAT_ADD,
+    NAT_BEQ, NAT_BLE, NAT_DIV, NAT_GCD, NAT_LAND, NAT_LOR, NAT_MOD, NAT_MUL, NAT_POW,
+    NAT_SHL, NAT_SHR, NAT_SUB, NAT_SUCC, NAT_XOR, NAT_ZERO, STRING, STRING_OF_LIST,
+};
+use num_bigint::BigUint;
+use num_integer::Integer;
+use num_traits::{ToPrimitive, Zero};
+
+// Past these caps the primitive declines and the definition unfolds, as in Lean.
+const BIG_EXP: u64 = 1 << 24;
+const MAX_RESULT_BITS: u64 = 1 << 26;
+
+pub(super) fn symbol(path: &str, encoded: bool) -> String {
+    if encoded {
+        serde_json::to_string(&path.split('.').collect::<Vec<_>>())
+            .expect("serializing strings cannot fail")
+    } else {
+        path.into()
+    }
+}
+
+const RESERVED: [(&str, usize); 27] = [
+    (NAT, 0),
+    (NAT_ZERO, 0),
+    (NAT_SUCC, 0),
+    (NAT_ADD, 0),
+    (NAT_SUB, 0),
+    (NAT_MUL, 0),
+    (NAT_POW, 0),
+    (NAT_MOD, 0),
+    (NAT_DIV, 0),
+    (NAT_GCD, 0),
+    (NAT_LAND, 0),
+    (NAT_LOR, 0),
+    (NAT_XOR, 0),
+    (NAT_SHL, 0),
+    (NAT_SHR, 0),
+    (NAT_BEQ, 0),
+    (NAT_BLE, 0),
+    (BOOL, 0),
+    (BOOL_TRUE, 0),
+    (BOOL_FALSE, 0),
+    (CHAR, 0),
+    (CHAR_OF_NAT, 0),
+    (STRING, 0),
+    (STRING_OF_LIST, 0),
+    (LIST, 1),
+    (LIST_NIL, 1),
+    (LIST_CONS, 1),
+];
+
+fn signature(name: &str, params: &[String], encoded: bool) -> Expr {
+    let c = |s: &str| Expr::Const(symbol(s, encoded), vec![]);
+    let arrow = |a: Expr, b: Expr| Expr::pi(Name::new("_"), a, b);
+    let ty = || Expr::Sort(Level::Nat(1));
+    let u = || Level::Param(params[0].clone());
+    let list = |l: Level, a: Expr| Expr::Const(symbol(LIST, encoded), vec![l]).app(a);
+    let a = Name::new("A");
+    let av = || Expr::Var(a.clone());
+    let elem = || Expr::Sort(Level::Succ(Box::new(u())));
+    match name {
+        NAT | BOOL | CHAR | STRING => ty(),
+        NAT_ZERO => c(NAT),
+        NAT_SUCC => arrow(c(NAT), c(NAT)),
+        NAT_BEQ | NAT_BLE => arrow(c(NAT), arrow(c(NAT), c(BOOL))),
+        BOOL_TRUE | BOOL_FALSE => c(BOOL),
+        CHAR_OF_NAT => arrow(c(NAT), c(CHAR)),
+        STRING_OF_LIST => arrow(list(Level::Nat(0), c(CHAR)), c(STRING)),
+        LIST => arrow(elem(), elem()),
+        LIST_NIL => Expr::pi(a.clone(), elem(), list(u(), av())),
+        LIST_CONS => Expr::pi(
+            a.clone(),
+            elem(),
+            arrow(av(), arrow(list(u(), av()), list(u(), av()))),
+        ),
+        _ => arrow(c(NAT), arrow(c(NAT), c(NAT))),
+    }
+}
+
+/// Rejects a declaration that reuses a primitive name with a different signature.
+pub(super) fn validate(name: &str, params: &[String], ty: &Expr) -> Result<()> {
+    let encoded = name.starts_with('[');
+    let Some(&(prim, arity)) = RESERVED.iter().find(|(p, _)| name == symbol(p, encoded)) else {
+        return Ok(());
+    };
+    if params.len() == arity && ty.aeq(&signature(prim, params, encoded)) {
+        Ok(())
+    } else {
+        Err(Error::Rejected(format!("reserved primitive name: {name}")))
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum NatOp {
+    Succ,
+    Log2,
+    Add,
+    Sub,
+    Mul,
+    Pow,
+    Div,
+    Mod,
+    Gcd,
+    Beq,
+    Ble,
+    Land,
+    Lor,
+    Xor,
+    ShiftLeft,
+    ShiftRight,
+}
+
+// Lean 4.36 does not reduce Nat.log2 by GMP (K07): it is not listed.
+const NAT_OPS: [(&str, NatOp, usize); 15] = [
+    ("succ", NatOp::Succ, 1),
+    ("add", NatOp::Add, 2),
+    ("sub", NatOp::Sub, 2),
+    ("mul", NatOp::Mul, 2),
+    ("pow", NatOp::Pow, 2),
+    ("div", NatOp::Div, 2),
+    ("mod", NatOp::Mod, 2),
+    ("gcd", NatOp::Gcd, 2),
+    ("beq", NatOp::Beq, 2),
+    ("ble", NatOp::Ble, 2),
+    ("land", NatOp::Land, 2),
+    ("lor", NatOp::Lor, 2),
+    ("xor", NatOp::Xor, 2),
+    ("shiftLeft", NatOp::ShiftLeft, 2),
+    ("shiftRight", NatOp::ShiftRight, 2),
+];
+
+impl NatOp {
+    pub(super) fn parse(name: &str) -> Option<(Self, usize)> {
+        let op = name.strip_prefix("Nat.").or_else(|| {
+            name.strip_prefix("[\"Nat\",\"")
+                .and_then(|n| n.strip_suffix("\"]"))
+        })?;
+        NAT_OPS
+            .iter()
+            .find(|(n, ..)| *n == op)
+            .map(|&(_, op, arity)| (op, arity))
+    }
+
+    fn apply(self, a: BigUint, b: BigUint) -> Option<BigUint> {
+        Some(match self {
+            Self::Add => a + b,
+            Self::Sub if a >= b => a - b,
+            Self::Sub => BigUint::ZERO,
+            Self::Mul => a * b,
+            Self::Div if b.is_zero() => BigUint::ZERO,
+            Self::Div => a / b,
+            Self::Mod if b.is_zero() => a,
+            Self::Mod => a % b,
+            Self::Gcd => a.gcd(&b),
+            Self::Land => a & b,
+            Self::Lor => a | b,
+            Self::Xor => a ^ b,
+            // Past these caps Lean 4.36 computes or refuses with an error; it never unfolds the
+            // definition, so neither do we: None here is turned into a decline by the caller.
+            Self::Pow => {
+                let exp = b.to_u64().filter(|&e| e <= BIG_EXP)?;
+                if a.bits().saturating_mul(exp) > MAX_RESULT_BITS {
+                    return None;
+                }
+                a.pow(exp as u32)
+            }
+            Self::ShiftLeft if a.is_zero() => BigUint::ZERO,
+            Self::ShiftLeft => a << b.to_u64().filter(|&s| s <= BIG_EXP)?,
+            Self::ShiftRight => match b.to_u64() {
+                Some(s) => a >> s,
+                None => BigUint::ZERO,
+            },
+            Self::Succ | Self::Log2 | Self::Beq | Self::Ble => unreachable!(),
+        })
+    }
+}
+
+impl Checker<'_> {
+    pub(super) fn builtin_name(&self, path: &str) -> String {
+        let encoded = symbol(path, true);
+        if self.env.declarations.contains_key(&encoded) {
+            encoded
+        } else {
+            path.into()
+        }
+    }
+
+    pub(super) fn builtin(&self, path: &str, levels: Vec<Level>) -> Expr {
+        Expr::Const(self.builtin_name(path), levels)
+    }
+
+    pub(super) fn literal_type(&mut self, path: &str) -> Result<Expr> {
+        let ty = self.builtin(path, vec![]);
+        let sort = self.infer(&ty)?;
+        if !self.conv(&sort, &Expr::Sort(Level::Nat(1)))? {
+            return Err(Error::Rejected(format!("invalid literal type: {path}")));
+        }
+        Ok(ty)
+    }
+
+    pub(super) fn nat_constructor(&self, n: &BigUint) -> Expr {
+        if n.is_zero() {
+            self.builtin(NAT_ZERO, vec![])
+        } else {
+            self.builtin(NAT_SUCC, vec![]).app(Expr::nat(n - 1u32))
+        }
+    }
+
+    pub(super) fn nat_literal_eq(&mut self, n: &BigUint, other: &Expr) -> Result<bool> {
+        let (head, args) = spine(other);
+        if let Expr::Const(name, levels) = head {
+            if !levels.is_empty() {
+                return Ok(false);
+            }
+            if name == self.builtin_name(NAT_ZERO) && args.is_empty() {
+                return Ok(n.is_zero());
+            }
+            if name == self.builtin_name(NAT_SUCC) && args.len() == 1 && !n.is_zero() {
+                return self.conv(&Expr::nat(n - 1u32), &args[0]);
+            }
+        }
+        Ok(false)
+    }
+
+    pub(super) fn string_constructor(&mut self, s: &str) -> Result<Expr> {
+        let char_ty = self.builtin(CHAR, vec![]);
+        let mut list = self
+            .builtin(LIST_NIL, vec![Level::Nat(0)])
+            .app(char_ty.clone());
+        let cons = self.builtin(LIST_CONS, vec![Level::Nat(0)]).app(char_ty);
+        for ch in s.chars().rev() {
+            self.tick()?;
+            let value = self.builtin(CHAR_OF_NAT, vec![]).app(Expr::nat(ch as u32));
+            list = cons.clone().app(value).app(list);
+        }
+        Ok(self.builtin(STRING_OF_LIST, vec![]).app(list))
+    }
+
+    fn natural_value(&mut self, e: &Expr) -> Result<Option<BigUint>> {
+        Ok(match self.whnf(e)? {
+            Expr::Nat(n) => Some(n.0),
+            Expr::Const(n, us) if us.is_empty() && n == self.builtin_name(NAT_ZERO) => {
+                Some(BigUint::ZERO)
+            }
+            _ => None,
+        })
+    }
+
+    pub(super) fn reduce_primitive(&mut self, head: &Expr, args: &[Expr]) -> Result<Option<Expr>> {
+        let Expr::Const(name, levels) = head else {
+            return Ok(None);
+        };
+        let Some((op, _)) =
+            NatOp::parse(name).filter(|&(_, arity)| levels.is_empty() && arity == args.len())
+        else {
+            return Ok(None);
+        };
+        match op {
+            NatOp::Succ => return Ok(self.natural_value(&args[0])?.map(|n| Expr::nat(n + 1u32))),
+            _ => {}
+        }
+        let Some(a) = self.natural_value(&args[0])? else {
+            return Ok(None);
+        };
+        let Some(b) = self.natural_value(&args[1])? else {
+            return Ok(None);
+        };
+        let value = match op {
+            NatOp::Beq => a == b,
+            NatOp::Ble => a <= b,
+            op => {
+                return match op.apply(a, b) {
+                    Some(r) => Ok(Some(Expr::nat(r))),
+                    None => Err(Error::Unsupported(
+                        "Nat primitive outside the range Lean 4.36 evaluates".into(),
+                    )),
+                };
+            }
+        };
+        Ok(Some(self.builtin(
+            if value { BOOL_TRUE } else { BOOL_FALSE },
+            vec![],
+        )))
+    }
+}

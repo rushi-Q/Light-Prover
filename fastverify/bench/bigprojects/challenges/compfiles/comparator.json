@@ -1,0 +1,9 @@
+{
+  "challenge_module": "Challenge",
+  "solution_module": "Compfiles",
+  "theorem_names": ["Imo1959P1.imo1959_p1", "Imo1972P5.imo1972_p5", "Imo2001P6.imo2001_p6", "Imo1966P4.imo1966_p4",
+                    "Imo1963P5.imo1963_p5", "Imo2013P1.imo2013_p1", "Imo2005P3.imo2005_p3", "Imo1969P1.imo1969_p1",
+                    "Imo2008P3.imo2008_p3", "Imo1964P2.imo1964_p2"],
+  "definition_names": [],
+  "permitted_axioms": ["propext", "Quot.sound", "Classical.choice"]
+}

@@ -1,0 +1,4 @@
+# case official_rc official_export_sha256[:16]  (from a live official run; matches the values recorded with the reproduction)
+proj-libsrc 1 b138789a057018d8
+proj-pkgsrc 1 b138789a057018d8
+proj-both 1 b138789a057018d8

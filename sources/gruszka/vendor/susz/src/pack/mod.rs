@@ -1,0 +1,308 @@
+//! The packer: lean4export 3.1 ndjson to canonical Susz 1 (spec section 9).
+//!
+//! Reading lines fills columns of expressions and a stream of the other
+//! records (`pk`, `lines`, `par`); a walk back from the last expression
+//! decides which expressions only one theorem's value reaches; the writer
+//! (`write`) then emits MAIN, PROOFS, INDEX and SOURCE.
+
+pub(crate) mod json;
+mod lines;
+mod par;
+pub(crate) mod pk;
+mod write;
+
+use std::fmt;
+
+/// Whose fault a packing failure is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fault {
+    /// The input is not a valid export (exit code 1).
+    Invalid,
+    /// The input may be fine but this packer cannot pack it: a limit, a
+    /// record or field it does not know, I/O, an internal error (exit code 2).
+    Cannot,
+}
+
+#[derive(Debug, Clone)]
+pub struct PackError {
+    pub fault: Fault,
+    pub msg: String,
+}
+
+impl PackError {
+    pub fn invalid(msg: impl Into<String>) -> PackError {
+        PackError {
+            fault: Fault::Invalid,
+            msg: msg.into(),
+        }
+    }
+    pub fn cannot(msg: impl Into<String>) -> PackError {
+        PackError {
+            fault: Fault::Cannot,
+            msg: msg.into(),
+        }
+    }
+    /// The same failure with a prefix (for instance the line number).
+    pub fn at(self, prefix: impl fmt::Display) -> PackError {
+        PackError {
+            fault: self.fault,
+            msg: format!("{prefix}: {}", self.msg),
+        }
+    }
+}
+
+impl From<String> for PackError {
+    fn from(s: String) -> Self {
+        PackError::invalid(s)
+    }
+}
+impl From<&str> for PackError {
+    fn from(s: &str) -> Self {
+        PackError::invalid(s)
+    }
+}
+
+impl fmt::Display for PackError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.msg)
+    }
+}
+
+impl std::error::Error for PackError {}
+
+pub type R<T> = Result<T, PackError>;
+
+static T0: std::sync::OnceLock<Option<std::time::Instant>> = std::sync::OnceLock::new();
+/// SUSZ_TIME=1: phase times on stderr (dev instrumentation).
+pub fn tmark(label: &str) {
+    let t = T0.get_or_init(|| std::env::var_os("SUSZ_TIME").map(|_| std::time::Instant::now()));
+    if let Some(t) = t {
+        eprintln!("P {label} {:.3}", t.elapsed().as_secs_f64());
+    }
+}
+
+macro_rules! inv {
+    ($($t:tt)*) => { $crate::pack::PackError::invalid(format!($($t)*)) };
+}
+macro_rules! cant {
+    ($($t:tt)*) => { $crate::pack::PackError::cannot(format!($($t)*)) };
+}
+pub(crate) use cant;
+pub(crate) use inv;
+
+// Gives the pages of v[from..to] back to the system; v is not read there
+// again.
+pub(crate) fn give_back_range<T>(v: &[T], from: usize, to: usize) {
+    let to = to.min(v.len());
+    if from < to {
+        let (p, size) = (v.as_ptr() as usize, std::mem::size_of::<T>());
+        release(p + from * size, p + to * size);
+    }
+}
+
+// Frees a large vector for good. On macOS the allocator keeps freed large
+// blocks for reuse, still counted as the process's memory, so their pages
+// are given back first.
+pub(crate) fn give_back<T>(v: Vec<T>) {
+    let bytes = v.capacity() * std::mem::size_of::<T>();
+    if bytes >= 1 << 20 {
+        let p = v.as_ptr() as usize;
+        release(p, p + bytes);
+    }
+    drop(v);
+}
+
+// K02: asks for transparent huge pages over the whole 2 MiB pages within p..p+bytes
+#[allow(unused_variables)]
+pub(crate) fn huge(p: usize, bytes: usize) {
+    #[cfg(target_os = "linux")]
+    {
+        extern "C" {
+            fn madvise(addr: *mut std::ffi::c_void, len: usize, advice: i32) -> i32;
+        }
+        const H: usize = 1 << 21;
+        let (start, end) = ((p + H - 1) & !(H - 1), (p + bytes) & !(H - 1));
+        if end > start {
+            unsafe {
+                madvise(start as *mut std::ffi::c_void, end - start, 14);
+            }
+        }
+    }
+}
+
+// The whole pages within from..to, memory nothing reads again before it is
+// written or freed.
+#[allow(unused_variables)]
+fn release(from: usize, to: usize) {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        extern "C" {
+            fn madvise(addr: *mut std::ffi::c_void, len: usize, advice: i32) -> i32;
+        }
+        // MADV_FREE_REUSABLE takes the pages out of the footprint on macOS;
+        // MADV_DONTNEED frees them on Linux
+        #[cfg(target_os = "macos")]
+        const ADVICE: i32 = 7;
+        #[cfg(target_os = "linux")]
+        const ADVICE: i32 = 4;
+        // a multiple of every page size these systems use
+        const PAGE: usize = 1 << 14;
+        let (start, end) = ((from + PAGE - 1) & !(PAGE - 1), to & !(PAGE - 1));
+        if end > start {
+            unsafe {
+                madvise(start as *mut std::ffi::c_void, end - start, ADVICE);
+            }
+        }
+    }
+}
+
+/// Packing options.
+#[derive(Debug, Clone)]
+pub struct Options {
+    /// Write the INDEX section (the default).
+    pub index: bool,
+    /// Workers reading the input and writing the output (1, the default:
+    /// one thread). The output does not depend on it.
+    pub threads: usize,
+}
+
+/// The number of threads the `susz` command packs on unless told otherwise:
+/// as many as the system says can run at once, 1 if it cannot tell.
+pub fn all_cores() -> usize {
+    std::thread::available_parallelism().map_or(1, |n| n.get())
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            index: true,
+            threads: 1,
+        }
+    }
+}
+
+/// What a packing run wrote.
+#[derive(Debug, Clone, Default)]
+pub struct Stats {
+    /// Names and levels with their implicit id 0, as the trailer counts them.
+    pub names: u64,
+    pub levels: u64,
+    pub exprs: u64,
+    pub main_exprs: u64,
+    pub decls: u64,
+    pub blocks: u64,
+    pub main_bytes: u64,
+    pub proofs_bytes: u64,
+    pub index_bytes: u64,
+    pub source_bytes: u64,
+    pub file_bytes: u64,
+    pub parallel: bool,
+}
+
+impl fmt::Display for Stats {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "names {}, levels {}, expressions {} (MAIN {}, in blocks {}), declarations {} (blocks {}); MAIN {} bytes, PROOFS {}, INDEX {}, SOURCE {}; file {} bytes{}",
+            self.names - 1,
+            self.levels - 1,
+            self.exprs,
+            self.main_exprs,
+            self.exprs - self.main_exprs,
+            self.decls,
+            self.blocks,
+            self.main_bytes,
+            self.proofs_bytes,
+            self.index_bytes,
+            self.source_bytes,
+            self.file_bytes,
+            if self.parallel { " (read on several workers)" } else { "" }
+        )
+    }
+}
+
+/// Reads the export at `input` and returns the packed file's bytes.
+pub fn pack_to_vec(input: &str, opts: &Options) -> R<(Vec<u8>, Stats)> {
+    tmark("start");
+    let (pk, parallel) = read(input, opts)?;
+    tmark("read");
+    let mut out = Vec::new();
+    let mut st = write::write(pk, &mut out, opts.index, opts.threads)?;
+    st.parallel = parallel;
+    Ok((out, st))
+}
+
+/// K01: `pack_to_vec`, with where MAIN's segments start (for
+/// `read::decode_par`; hints only, every one is checked there).
+pub fn pack_to_vec_segs(input: &str, opts: &Options) -> R<(Vec<u8>, Stats, Vec<crate::read::SegStart>)> {
+    tmark("start");
+    let (pk, parallel) = read(input, opts)?;
+    tmark("read");
+    let mut out = Vec::new();
+    let mut segs = Vec::new();
+    let mut st = write::write_segs(pk, &mut out, opts.index, opts.threads, Some(&mut segs))?;
+    st.parallel = parallel;
+    Ok((out, st, segs))
+}
+
+/// Packs the export at `input` into `output`. The file is written under a
+/// temporary name next to `output` and renamed when complete, so `output`
+/// never holds a partial file.
+pub fn pack_file(input: &str, output: &str, opts: &Options) -> R<Stats> {
+    tmark("start");
+    let (pk, parallel) = read(input, opts)?;
+    tmark("read");
+    let mut st = write_file(pk, output, opts)?;
+    st.parallel = parallel;
+    Ok(st)
+}
+
+// Writes what `pk` read to `output`, under a temporary name renamed when
+// complete (packing, slicing).
+pub(crate) fn write_file(pk: pk::Pk, output: &str, opts: &Options) -> R<Stats> {
+    let tmp = format!("{output}.tmp-{}", std::process::id());
+    crate::cleanup::register(&tmp);
+    let res = (|| {
+        let f = std::fs::File::create(&tmp).map_err(|e| cant!("cannot write {tmp}: {e}"))?;
+        let mut w = std::io::BufWriter::with_capacity(1 << 20, f);
+        let st = write::write(pk, &mut w, opts.index, opts.threads)?;
+        use std::io::Write;
+        w.flush().map_err(|e| cant!("cannot write {tmp}: {e}"))?;
+        // complete for every other process once renamed; no fsync (on macOS a
+        // full flush to the device costs seconds on mathlib)
+        let f = w
+            .into_inner()
+            .map_err(|e| cant!("cannot write {tmp}: {e}"))?;
+        drop(f);
+        std::fs::rename(&tmp, output).map_err(|e| cant!("cannot rename {tmp} to {output}: {e}"))?;
+        Ok(st)
+    })();
+    if res.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    crate::cleanup::unregister();
+    res
+}
+
+// Writes what `pk` read to bytes in memory (slicing, in tests).
+pub(crate) fn write_vec(pk: pk::Pk, opts: &Options) -> R<(Vec<u8>, Stats)> {
+    let mut out = Vec::new();
+    let st = write::write(pk, &mut out, opts.index, opts.threads)?;
+    Ok((out, st))
+}
+
+fn read(input: &str, opts: &Options) -> R<(pk::Pk, bool)> {
+    let size = std::fs::metadata(input)
+        .map_err(|e| cant!("cannot read {input}: {e}"))?
+        .len() as usize;
+    if opts.threads > 1 {
+        if let Some(p) = par::parse_parallel(input, opts.threads)? {
+            return Ok((p, true));
+        }
+    }
+    let mut pk = pk::Pk::new(size);
+    pk.reserve_all(size);
+    lines::read_file(input, &mut pk, 16 << 20)?;
+    pk.finish();
+    Ok((pk, false))
+}

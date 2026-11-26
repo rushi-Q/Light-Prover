@@ -1,0 +1,1 @@
+theorem goal : True := sorry

@@ -1,0 +1,15 @@
+{
+ "challenge_module": "Challenge",
+ "solution_module": "Physlib",
+ "theorem_names": [
+  "deriv_tanh",
+  "iteratedDeriv_tanh_is_polynomial_of_tanh",
+  "iteratedDeriv_tanh_differentiable"
+ ],
+ "definition_names": [],
+ "permitted_axioms": [
+  "propext",
+  "Quot.sound",
+  "Classical.choice"
+ ]
+}

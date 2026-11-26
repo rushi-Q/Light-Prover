@@ -1,0 +1,4 @@
+# 042: address-space limits (RLIMIT_AS) under which the official comparator works: fast must not falsely reject
+good-16G  | toy/good/challenge.export | toy/good/solution.export | @/rh5-nanoda.json | 0 | rlimit:16000000
+good-64G  | toy/good/challenge.export | toy/good/solution.export | @/rh5-nanoda.json | 0 | rlimit:64000000
+good-256G | toy/good/challenge.export | toy/good/solution.export | @/rh5-nanoda.json | 0 | rlimit:256000000

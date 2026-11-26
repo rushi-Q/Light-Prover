@@ -1,0 +1,14 @@
+{
+ "challenge_module": "Challenge",
+ "solution_module": "Cslib",
+ "theorem_names": [
+  "Cslib.FLP.Consensus.one_not_exists",
+  "Cslib.FLP.Consensus.ge_one_not_exists"
+ ],
+ "definition_names": [],
+ "permitted_axioms": [
+  "propext",
+  "Quot.sound",
+  "Classical.choice"
+ ]
+}

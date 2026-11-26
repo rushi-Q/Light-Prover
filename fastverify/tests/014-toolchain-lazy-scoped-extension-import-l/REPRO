@@ -1,0 +1,3 @@
+# scripts (relative to x/) run by lib/xrepro.sh, each prints "=== SUMMARY ... official_rc=.. fast_rc=.."
+e2e/repro-e2e.sh
+e2e/repro-e2e-liveness.sh

@@ -1,0 +1,11 @@
+WARNING: Sandbox disabled, this run is not trustworthy.
+Running Lean default kernel on solution
+Running stub (second kernel) kernel on solution
+[ccmp] kernel Lean default finished after 5 ms
+[ccmp] kernel stub (second kernel) finished after 6 ms
+[ccmp] exports parsed after 2734 ms
+[ccmp] compare (parse, compareAt, checkAxioms) finished after 3993 ms
+Lean default kernel accepts the solution
+stub (second kernel) kernel accepts the solution
+Your solution is okay!
+{"name":"lg-mid.ccmp.T8","limits":{"memory_max":"max","memory_high":"max","swap_max":"0","cpus":"8-15","cpu_quota_pct":""},"exit":0,"wall_s":4.102071238,"memory_peak":2396209152,"sampled_max":{"current":2351947776,"anon":2298982400,"file":12288,"shmem":0},"memory_events":{"low":0,"high":0,"max":0,"oom":0,"oom_kill":0,"oom_group_kill":0,"sock_throttled":0},"cpu_stat":{"usage_usec":19378350,"user_usec":18834836,"system_usec":543514,"nice_usec":0,"core_sched.force_idle_usec":0,"nr_periods":0,"nr_throttled":0,"throttled_usec":0,"nr_bursts":0,"burst_usec":0},"pids_peak":84,"host":"host1","cmd":["env", "-i", "PATH=/scratch/budget-runs/legs1/.w.mid/bin:$ELAN_HOME/toolchains/leanprover--lean4---v4.36.0/bin:/usr/bin:/bin", "HOME=/scratch/budget-runs/legs1/.w.mid/home", "TMPDIR=/scratch/budget-runs/legs1/.w.mid/tmp", "LANG=C.UTF-8", "LEAN_ABORT_ON_PANIC=1", "LEAN_NUM_THREADS=8", "CCMP_LEANCHECKER=/scratch/budget-runs/legs1/.w.mid/bin/stubkernel", "/scratch/fastverify-next/checkS/s03h/ccmp", "$ELAN_HOME/toolchains/leanprover--lean4---v4.36.0", "/scratch/budget-runs/legs1/.w.mid/comparator.json", "/scratch/bench-inputs/rh-mid/challenge/challenge.export", "/scratch/bench-inputs/rh-mid/solution.export"]}

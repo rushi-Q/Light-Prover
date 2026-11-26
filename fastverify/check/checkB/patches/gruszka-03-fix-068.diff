@@ -1,0 +1,47 @@
+--- a/src/induct.rs
++++ b/src/induct.rs
+@@ -837,10 +837,12 @@
+             };
+             nnested_claim.push(*nnested);
+             if *nparams != np || *u2 != unsafe_ || !same_lp(c) {
+-                return reject("types of a mutual block disagree on parameters, universes or safety");
++                // F06 fix-068: Lean 4.36 replay builds the block from ONE type's record and never compares the others': decline
++                return decline("types of a mutual block disagree on parameters, universes or safety (records not compared by Lean 4.36)");
+             }
+             if all.len() != canon.len() || all.iter().zip(canon.iter()).any(|(&a, &b)| env.canon(a) != b) {
+-                return reject("inductive type: wrong `all` list");
++                // F06 fix-068: the other types' `all` records are never compared by Lean 4.36 replay: decline
++                return decline("inductive type: `all` list differs (records not compared by Lean 4.36)");
+             }
+             nidx.push(*nindices);
+             for &cn in cs.iter() {
+@@ -961,7 +963,8 @@
+                 k += 1;
+             }
+             if k != nidx[j] {
+-                return reject("wrong number of indices");
++                // F06 fix-068: Lean 4.36 replay recomputes numIndices and never compares the record's: decline
++                return decline("number of indices differs from the record (not compared by Lean 4.36)");
+             }
+             let l = self.sort_of(w, "inductive type result")?;
+             if j == 0 {
+@@ -999,7 +1002,8 @@
+         }
+         let naux = (ind.types.len() - types.len()) as u32;
+         if nnested_claim.iter().any(|&x| x != naux) {
+-            return reject("numNested does not match the nested occurrences");
++            // F06 fix-068: Lean 4.36 replay recomputes numNested and never compares the record's: decline, not reject
++            return decline("numNested differs from the nested occurrences (not compared by Lean 4.36)");
+         }
+         // auxiliary types live in the block's universe
+         for j in types.len()..ind.types.len() {
+@@ -1107,7 +1111,8 @@
+         for &r in &types {
+             let CKind::Induct { is_rec: ir, is_reflexive: rf, .. } = env.consts[r as usize].kind else { unreachable!() };
+             if ir != is_rec || rf != is_reflexive {
+-                return reject("isRec / isReflexive do not match the declaration");
++                // F06 fix-068: Lean 4.36 replay recomputes isRec / isReflexive and never compares the record's: decline
++                return decline("isRec / isReflexive differ from the declaration (not compared by Lean 4.36)");
+             }
+         }
+ 

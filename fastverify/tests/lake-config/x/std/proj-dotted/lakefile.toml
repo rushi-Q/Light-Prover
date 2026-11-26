@@ -1,0 +1,7 @@
+name = "mini"
+srcDir = "src"
+defaultTargets = ["Main"]
+leanOptions.autoImplicit = false
+
+[[lean_lib]]
+name = "Main"

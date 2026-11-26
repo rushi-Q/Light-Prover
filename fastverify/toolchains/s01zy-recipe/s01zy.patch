@@ -1,0 +1,692 @@
+diff --git a/src/Lean/Compiler/InitAttr.lean b/src/Lean/Compiler/InitAttr.lean
+index 244e9a089f..f2c8e35ce4 100644
+--- a/src/Lean/Compiler/InitAttr.lean
++++ b/src/Lean/Compiler/InitAttr.lean
+@@ -199,7 +199,11 @@ private unsafe def runInitAttrForMod
+ private unsafe def runInitAttrs (env : Environment) (opts : Options) : IO Unit := do
+   if !(← isInitializerExecutionEnabled) then
+     throw <| IO.userError "`enableInitializersExecution` must be run before calling `importModules (loadExts := true)`"
++  -- prefix-zygote child (S01): the prefix modules' initializers already ran in the zygote (and would be skipped by
++  -- the run-once guards below anyway)
++  let start := (← importPrefixContinueAtRef.get).getD 0
+   for mod in env.header.modules, modIdx in 0...* do
++    if modIdx < start then continue
+     runInitAttrForMod env opts mod modIdx
+ 
+ /--
+diff --git a/src/Lean/Environment.lean b/src/Lean/Environment.lean
+index 87ecc96145..c93e7e27a8 100644
+--- a/src/Lean/Environment.lean
++++ b/src/Lean/Environment.lean
+@@ -1969,6 +1969,40 @@ private def setImportedIREntries (states : Array EnvExtensionState) (mods : Arra
+           { s with importedEntries := importedEntries.set! modIdx entries }
+   return states
+ 
++/--
++Prefix-zygote continuation of `setImportedEntries` (S01, see `ImportPrefixExts`): the `importedEntries` of the first
++`p.numModules` modules are taken from the prefix states, only the further modules are scanned. `none` if some
++persistent extension has no prefix state (then the caller uses `setImportedEntries`).
++-/
++private def setImportedEntriesPrefix (states : Array EnvExtensionState) (mods : Array ModuleData)
++    (pstates : Array EnvExtensionState) (n : Nat) (ir : Bool) : IO (Option (Array EnvExtensionState)) := do
++  let mut states := states
++  let extDescrs ← persistentEnvExtensionsRef.get
++  for extDescr in extDescrs do
++    let idx := extDescr.toEnvExtension.idx
++    unless idx < pstates.size do return none
++    let ps : PersistentEnvExtensionState EnvExtensionEntry EnvExtensionState := unsafe unsafeCast pstates[idx]!
++    if ir then
++      -- as `setImportedIREntries`: empty unless some module has IR entries for the extension
++      unless ps.importedEntries.isEmpty || ps.importedEntries.size == n do return none
++      states := unsafe extDescr.toEnvExtension.modifyStateImpl states fun s =>
++        { s with importedEntries :=
++            if ps.importedEntries.isEmpty then #[] else ps.importedEntries ++ .replicate (mods.size - n) #[] }
++    else
++      unless ps.importedEntries.size == n do return none
++      states := unsafe extDescr.toEnvExtension.modifyStateImpl states fun s =>
++        { s with importedEntries := ps.importedEntries ++ .replicate (mods.size - n) #[] }
++  let extNameIdx ← mkExtNameMap 0
++  for h : modIdx in n...mods.size do
++    let mod := mods[modIdx]
++    for (extName, entries) in mod.entries do
++      if let some entryIdx := extNameIdx[extName]? then
++        states := unsafe extDescrs[entryIdx]!.toEnvExtension.modifyStateImpl states fun s =>
++          let importedEntries :=
++            if s.importedEntries.isEmpty then .replicate mods.size #[] else s.importedEntries
++          { s with importedEntries := importedEntries.set! modIdx entries }
++  return some states
++
+ set_option compiler.ignoreBorrowAnnotation true in
+ /--
+   "Forward declaration" needed for updating the attribute table with user-defined attributes.
+@@ -1993,7 +2027,34 @@ private def ensureExtensionsArraySize (env : Environment) : IO Environment := do
+   let exts ← EnvExtension.ensureExtensionsArraySize env.base.private.extensions
+   return env.modifyCheckedAsync ({ · with extensions := exts })
+ 
+-private partial def finalizePersistentExtensions (env : Environment) (mods : Array ModuleData) (opts : Options) : IO Environment := do
++/-! ### Prefix-zygote import continuation (S01, sound build only)
++
++A *prefix* zygote (`LEAN_ZYGOTE_BASE` + `LEAN_ZYGOTE_PREFIX`, see `src/util/shell.cpp` and `zygotePreparePrefix`)
++imports a fixed prefix (e.g. `Mathlib`) once and completely (constants, extensions, initializers) and then forks one
++child per module. A child whose import closure starts with exactly the prefix modules continues from that state:
++its constant maps start from the prefix maps, and every persistent extension that has no entries in the further
++modules keeps the prefix state instead of re-running `addImportedFn` over all entries. This is not guaranteed to be
++bit-identical to a fresh import (hash map capacities differ; an `addImportedFn` that depends on more than its
++entries would see the prefix); it is meant only for the untrusted build of the sound mode, whose output is
++re-checked from the export by the trusted checkers. A child whose import does not continue the prefix exits with
++code 211 (the zygote client then runs the plain `lean`). -/
++
++/-- Prefix extension states: number of prefix modules and the prefix environment's extension states. -/
++structure ImportPrefixExts where
++  numModules : Nat
++  extensions : Array EnvExtensionState
++
++/-- Prefix zygote: while set, `ScopedEnvExtension.addImportedFn` records its state before `finalizeImport` (and its
++scoped entries) per extension name in `importPrefixScopedRef`. -/
++builtin_initialize importPrefixRecordingRef : IO.Ref Bool ← IO.mkRef false
++/-- Extension name ↦ (state before `finalizeImport`, scoped entries) after the prefix (types erased). -/
++builtin_initialize importPrefixScopedRef : IO.Ref (NameMap (EnvExtensionState × EnvExtensionState)) ← IO.mkRef {}
++/-- In a child continuing a prefix: number of prefix modules while its extensions are finalized; a scoped extension
++with a recorded prefix state then folds only the entries of the further modules onto it. -/
++builtin_initialize importPrefixContinueAtRef : IO.Ref (Option Nat) ← IO.mkRef none
++
++private partial def finalizePersistentExtensions (env : Environment) (mods : Array ModuleData) (opts : Options)
++    (pfx? : Option ImportPrefixExts := none) : IO Environment := do
+   loop 0 env
+ where
+   loop (i : Nat) (env : Environment) : IO Environment := do
+@@ -2006,7 +2067,20 @@ where
+       let s := extDescr.toEnvExtension.getState (asyncMode := .sync) env
+       let prevSize := (← persistentEnvExtensionsRef.get).size
+       let prevAttrSize ← getNumBuiltinAttributes
+-      let newState ← extDescr.addImportedFn s.importedEntries { env := env, opts := opts }
++      let reuse? : Option EnvExtensionState := pfx?.bind fun p =>
++        if h : extDescr.toEnvExtension.idx < p.extensions.size then
++          if (s.importedEntries.extract p.numModules s.importedEntries.size).all (·.isEmpty) then
++            some p.extensions[extDescr.toEnvExtension.idx]
++          else none
++        else none
++      let t0 ← if pfx?.isSome then IO.monoNanosNow else pure 0
++      let newState ← match reuse? with
++        | some ps => pure (unsafe (unsafeCast ps : PersistentEnvExtensionState EnvExtensionEntry EnvExtensionState)).state
++        | none => extDescr.addImportedFn s.importedEntries { env := env, opts := opts }
++      if pfx?.isSome then
++        let dt := ((← IO.monoNanosNow) - t0) / 1000000
++        if dt ≥ 5 && (← IO.getEnv "LEAN_ZYGOTE_DEBUG").isSome then
++          IO.eprintln s!"zygote prefix: extension {extDescr.name} {if reuse?.isSome then "reused" else "recomputed"} {dt} ms"
+       let mut env := extDescr.toEnvExtension.setState (asyncMode := .sync) env { s with state := newState }
+       if extDescr.name == `Lean.regularInitAttr then
+         -- Run `[init]` attributes now. We do this after `setState` so `runInitAttrs` can access
+@@ -2078,6 +2152,39 @@ structure ImportState where
+   private moduleNames   : Array Name := #[]
+ deriving Inhabited
+ 
++/-- Prefix snapshot of a prefix zygote (see `ImportPrefixExts`). -/
++private structure ImportPrefix where
++  modules      : Array ImportedModule
++  const2ModIdx : Std.HashMap Name ModuleIdx
++  constMap     : Std.HashMap Name ConstantInfo
++  exts         : ImportPrefixExts
++  irExtensions : Array EnvExtensionState
++
++private builtin_initialize importPrefixRef : IO.Ref (Option ImportPrefix) ← IO.mkRef none
++/-- Prefix zygote: the root module of the prefix and the `importModulesCore` state after visiting it (from an empty
++state, at `.private`); a child's walk that reaches the root first takes this state instead of walking the prefix. -/
++private builtin_initialize importPrefixStateRef : IO.Ref (Option (Name × ImportState)) ← IO.mkRef none
++
++/-- One-shot (only the header import of a forked child uses it): the prefix snapshot if `modules` continues it. -/
++private def takeImportPrefix (modules : Array ImportedModule) (eligible : Bool) : IO (Option ImportPrefix) := do
++  let some p ← importPrefixRef.get | return none
++  importPrefixRef.set none
++  let n := p.modules.size
++  let mut ok := eligible && n ≤ modules.size
++  if ok then
++    for h : i in *...n do
++      match modules[i]? with
++      | some a =>
++        let b := p.modules[i]
++        unless a.toImport == b.toImport && a.hasData == b.hasData do
++          ok := false; break
++      | none => ok := false; break
++  if ok then return some p
++  if (← IO.getEnv "LEAN_ZYGOTE_DEBUG").isSome then
++    IO.eprintln s!"zygote prefix MISS (import does not continue the prefix of {n} modules)"
++  -- the zygote already ran the prefix's initializers: a fresh import here would not equal a fresh process
++  IO.Process.exit 211
++
+ /-- Bumps all modules' `isExported` flag to true, intended for use in `shake` only. -/
+ def ImportState.markAllExported (self : ImportState) : ImportState := Id.run do
+   let mut self := self
+@@ -2307,6 +2414,20 @@ where
+         continue
+ 
+       -- newly discovered module
++      -- prefix zygote child (S01): reaching the prefix root when the modules visited so far are a prefix of the
++      -- zygote's walk (typically `Init`'s closure, imported first by every non-prelude file) continues the zygote's walk
++      if globalLevel == .private && !loadIRSig && arts.isEmpty then
++        if let some (root, ps) ← importPrefixStateRef.get then
++          let st ← get
++          if root == i.module && st.moduleNames.size ≤ ps.moduleNames.size then
++            let mut same := true
++            for h : k in *...st.moduleNames.size do
++              unless ps.moduleNames[k]? == some st.moduleNames[k] do
++                same := false; break
++            if same then
++              importPrefixStateRef.set none
++              set ps
++              continue
+       let parts ← if needsData then loadData cache i else pure #[]
+       let irParts ← if needsIR then loadIR cache i else pure #[]
+       let mod := { i with importAll, isExported, irPhases, parts, irParts, needsIRTrans, hasData := needsData }
+@@ -2424,10 +2545,20 @@ def finalizeImport (s : ImportState) (imports : Array Import) (opts : Options) (
+     if !mod.isExported then numPublicConsts else
+       let some data := mod.publicModule? | numPublicConsts
+       numPublicConsts + data.constants.size
+-  let mut const2ModIdx : Std.HashMap Name ModuleIdx := Std.HashMap.emptyWithCapacity (capacity := numPrivateConsts + numExtraConsts)
+-  let mut privateConstantMap : Std.HashMap Name ConstantInfo := Std.HashMap.emptyWithCapacity (capacity := numPrivateConsts)
++  let pfx? ← takeImportPrefix modules (leakEnv && loadExts && !isModule && level == .private && !loadIRSig)
++  let dbg := pfx?.isSome && (← IO.getEnv "LEAN_ZYGOTE_DEBUG").isSome
++  let tA ← IO.monoNanosNow
++  let mut const2ModIdx : Std.HashMap Name ModuleIdx :=
++    match pfx? with
++    | some p => p.const2ModIdx
++    | none => Std.HashMap.emptyWithCapacity (capacity := numPrivateConsts + numExtraConsts)
++  let mut privateConstantMap : Std.HashMap Name ConstantInfo :=
++    match pfx? with
++    | some p => p.constMap
++    | none => Std.HashMap.emptyWithCapacity (capacity := numPrivateConsts)
+   let mut publicConstantMap : Std.HashMap Name ConstantInfo := Std.HashMap.emptyWithCapacity (capacity := numPublicConsts)
+-  for h : modIdx in *...moduleData.size do
++  let startIdx := match pfx? with | some p => p.modules.size | none => 0
++  for h : modIdx in startIdx...moduleData.size do
+     let data := moduleData[modIdx]
+     let consts := data.constants
+     for h : i in *...consts.size do
+@@ -2463,6 +2594,7 @@ def finalizeImport (s : ImportState) (imports : Array Import) (opts : Options) (
+               publicConstantMap := publicConstantMap.insert cname cinfo
+             -- no need to check for duplicates again, `privateConstMap` should be a superset
+ 
++  let tB ← IO.monoNanosNow
+   let exts ← mkInitialExtensionStates
+   let privateConstants : ConstMap := SMap.fromHashMap privateConstantMap false
+   let privateBase : Kernel.Environment := {
+@@ -2478,17 +2610,28 @@ def finalizeImport (s : ImportState) (imports : Array Import) (opts : Options) (
+   }
+   let publicConstants : ConstMap := SMap.fromHashMap publicConstantMap false
+   let publicBase := { privateBase with constants := publicConstants, header.regions := #[] }
+-  let extensions ← setImportedEntries privateBase.extensions moduleData
++  let extensions ← match pfx? with
++    | some p => do
++      match (← setImportedEntriesPrefix privateBase.extensions moduleData p.exts.extensions p.exts.numModules false) with
++      | some e => pure e
++      | none => setImportedEntries privateBase.extensions moduleData
++    | none => setImportedEntries privateBase.extensions moduleData
+   -- fall back to basic data when not in server
+   let serverData := modules.mapIdx (fun idx mod => mod.serverData? level |>.getD moduleData[idx]!)
+   -- `serverData?` selects a different part than `mainModule?` only at `.server`: at `.private`,
+   -- `importModulesCore` loads every module as `importAll`. Assumes `level` is the `globalLevel`
+   -- the modules were loaded with.
+   let serverIsMain := level != .server
+-  let irBaseExts ← setImportedIREntries privateBase.extensions irData
++  let irBaseExts ← match pfx? with
++    | some p => do
++      match (← setImportedEntriesPrefix privateBase.extensions irData p.irExtensions p.exts.numModules true) with
++      | some e => pure e
++      | none => setImportedIREntries privateBase.extensions irData
++    | none => setImportedIREntries privateBase.extensions irData
+   let serverBaseExts ←
+     if serverIsMain then pure extensions else setImportedEntries privateBase.extensions serverData
+   let privateBase := { privateBase with extensions, irBaseExts }
++  let tC ← IO.monoNanosNow
+   let mut env : Environment := {
+     base.private := privateBase
+     base.public  := publicBase
+@@ -2509,8 +2652,16 @@ def finalizeImport (s : ImportState) (imports : Array Import) (opts : Options) (
+ 
+        Safety: There are no concurrent accesses to `env` at this point. -/
+     env ← unsafe Runtime.markPersistent env
++  let tD ← IO.monoNanosNow
+   if loadExts then
+-    env ← finalizePersistentExtensions env moduleData opts
++    if let some p := pfx? then importPrefixContinueAtRef.set (some p.exts.numModules)
++    try
++      env ← finalizePersistentExtensions env moduleData opts (pfx?.map (·.exts))
++    finally
++      importPrefixContinueAtRef.set none
++  if dbg then
++    let tE ← IO.monoNanosNow
++    IO.eprintln s!"zygote prefix: phases constmaps {(tB - tA) / 1000000} ms, initstates+entries {(tC - tB) / 1000000} ms, markPersistent1 {(tD - tC) / 1000000} ms, extensions {(tE - tD) / 1000000} ms ({moduleData.size} modules)"
+     if leakEnv then
+       /- Ensure the final environment including environment extension states is
+         marked persistent as documented.
+@@ -2553,9 +2704,15 @@ def importModules (imports : Array Import) (opts : Options) (trustLevel : UInt32
+       throw <| IO.userError "import failed, trying to import module with anonymous name"
+   withImporting do
+     plugins.forM fun {path, initFn?} => Lean.loadPlugin path initFn?
++    let pending := (← importPrefixRef.get).isSome && (← IO.getEnv "LEAN_ZYGOTE_DEBUG").isSome
++    let t0 ← IO.monoNanosNow
+     let (_, s) ← importModulesCore (globalLevel := level) imports arts |>.run
+-    finalizeImport (leakEnv := leakEnv) (loadExts := loadExts) (level := level)
++    let t1 ← IO.monoNanosNow
++    let env ← finalizeImport (leakEnv := leakEnv) (loadExts := loadExts) (level := level)
+       s imports opts trustLevel
++    if pending then
++      IO.eprintln s!"zygote prefix: import total {((← IO.monoNanosNow) - t0) / 1000000} ms, importModulesCore {(t1 - t0) / 1000000} ms"
++    return env
+ 
+ /--
+ Base-zygote preparation (see `zygoteDataMemo`): reads the module data of the import closure of `imports` exactly as
+@@ -2575,6 +2732,46 @@ def zygotePreloadModuleData (imports : Array Import) : IO Nat := do
+   zygoteIRMemo.set (← unsafe Runtime.markPersistent (← zygoteIRMemo.get))
+   return (← zygoteDataMemo.get).size
+ 
++/--
++Prefix-zygote preparation (S01, see `ImportPrefixExts`; call after `zygotePreloadModuleData`): imports `imports`
++completely, exactly as the header of a non-`module` file is imported (`.private`, `leakEnv`, `loadExts`, initializers
++run), and records the snapshot that `finalizeImport` continues from in forked children. The constant maps are
++rebuilt with spare capacity for the children's further modules. Initializer execution is re-enabled afterwards (as
++at process start), so that children run the initializers of their further modules. Returns the number of prefix
++modules.
++-/
++def zygotePreparePrefix (imports : Array Import) (opts : Options) (spare : Nat := 2000000) : IO Nat := do
++  let (_, s) ← (importModulesCore (globalLevel := .private) imports {}).run
++  importPrefixRecordingRef.set true
++  let env ← try withImporting <| finalizeImport (leakEnv := true) (loadExts := true) (level := .private) s imports opts 0
++    finally importPrefixRecordingRef.set false
++  importPrefixScopedRef.set (← unsafe Runtime.markPersistent (← importPrefixScopedRef.get))
++  let modules := s.moduleNames.filterMap (s.moduleNameMap[·]?)
++  let mut const2ModIdx : Std.HashMap Name ModuleIdx := Std.HashMap.emptyWithCapacity (capacity := env.constants.map₁.size + spare)
++  let mut constMap : Std.HashMap Name ConstantInfo := Std.HashMap.emptyWithCapacity (capacity := env.constants.map₁.size + spare)
++  for h : modIdx in *...modules.size do
++    let mod := modules[modIdx]
++    let some data := mod.mainModule? | throw <| IO.userError s!"missing data file for module {mod.module}"
++    for h : i in *...data.constants.size do
++      let some cname := data.constNames[i]? | break
++      -- same insertion order and duplicate resolution as `finalizeImport`
++      match env.constants.map₁[cname]? with
++      | some cinfo => constMap := constMap.insert cname cinfo
++      | none => pure ()
++      const2ModIdx := const2ModIdx.insertIfNew cname modIdx
++    if let some ir := mod.irData? then
++      for cname in ir.extraConstNames do
++        const2ModIdx := const2ModIdx.insertIfNew cname modIdx
++  let p : ImportPrefix := {
++    modules, const2ModIdx, constMap
++    exts := { numModules := modules.size, extensions := env.base.private.extensions }
++    irExtensions := env.base.private.irBaseExts }
++  importPrefixRef.set (some (← unsafe Runtime.markPersistent p))
++  if h : imports.size = 1 then
++    importPrefixStateRef.set (some (← unsafe Runtime.markPersistent (imports[0].module, s)))
++  unsafe enableInitializersExecution
++  return modules.size
++
+ /--
+ Creates environment object from imports and frees compacted regions after calling `act`. No live
+ references to the environment object or imported objects may exist after `act` finishes. As this
+diff --git a/src/Lean/ScopedEnvExtension.lean b/src/Lean/ScopedEnvExtension.lean
+index 69a91dfc30..c4bacd0b03 100644
+--- a/src/Lean/ScopedEnvExtension.lean
++++ b/src/Lean/ScopedEnvExtension.lean
+@@ -58,10 +58,36 @@ def ScopedEntries.insert (scopedEntries : ScopedEntries β) (ns : Name) (b : β)
+   | none    => { map := scopedEntries.map.insert ns <| ({} : PArray β).push b }
+   | some bs => { map := scopedEntries.map.insert ns <| bs.push b }
+ 
++private unsafe def castPrefixStateUnsafe (σ β : Type) (x : EnvExtensionState × EnvExtensionState) :
++    Option (σ × ScopedEntries β) :=
++  some (unsafeCast x.1, unsafeCast x.2)
++
++/-- Type-restoring cast of a state recorded by `erasePrefixState` (same extension, hence same types). -/
++@[implemented_by castPrefixStateUnsafe]
++private opaque castPrefixState (σ β : Type) (x : EnvExtensionState × EnvExtensionState) : Option (σ × ScopedEntries β)
++
++private unsafe def erasePrefixStateUnsafe {σ β : Type} (s : σ) (se : ScopedEntries β) :
++    Option (EnvExtensionState × EnvExtensionState) :=
++  some (unsafeCast s, unsafeCast se)
++
++@[implemented_by erasePrefixStateUnsafe]
++private opaque erasePrefixState {σ β : Type} (s : σ) (se : ScopedEntries β) : Option (EnvExtensionState × EnvExtensionState)
++
+ def addImportedFn (descr : Descr α β σ) (as : Array (Array (Entry α))) : ImportM (StateStack α β σ) := do
++  -- prefix-zygote continuation (S01, sound build only; see `ImportPrefixExts` in `Lean.Environment`): a child whose
++  -- import continues the zygote's prefix starts from the state recorded after the prefix (the same left fold) and
++  -- folds only the entries of the further modules
++  let mut start := 0
+   let mut s ← descr.mkInitial
+   let mut scopedEntries : ScopedEntries β := {}
+-  for a in as do
++  if let some n ← importPrefixContinueAtRef.get then
++    if let some x := (← importPrefixScopedRef.get).find? descr.name then
++      if let some (s0, se0) := castPrefixState σ β x then
++        if n ≤ as.size then
++          start := n
++          s := s0
++          scopedEntries := se0
++  for a in as[start:] do
+     for e in a do
+       match e with
+       | Entry.global a =>
+@@ -70,6 +96,9 @@ def addImportedFn (descr : Descr α β σ) (as : Array (Array (Entry α))) : Imp
+       | Entry.scoped ns a =>
+         let b ← descr.ofOLeanEntry s a
+         scopedEntries := scopedEntries.insert ns b
++  if (← importPrefixRecordingRef.get) then
++    if let some x := erasePrefixState s scopedEntries then
++      importPrefixScopedRef.modify (·.insert descr.name x)
+   s := descr.finalizeImport s
+   return { stateStack := [ { state := s } ], scopedEntries := scopedEntries }
+ 
+diff --git a/src/Lean/Shell.lean b/src/Lean/Shell.lean
+index b89b7c3fa8..db32737ce8 100644
+--- a/src/Lean/Shell.lean
++++ b/src/Lean/Shell.lean
+@@ -482,6 +482,16 @@ def zygotePrepare (args : List String) (opts : ShellOptions) : IO UInt32 := do
+     let n ← Lean.zygotePreloadModuleData (mods.toArray.map fun m => { module := m })
+     if (← IO.getEnv "LEAN_ZYGOTE_DEBUG").isSome then
+       IO.eprintln s!"zygote base: memoized {n} module files"
++    -- PREFIX zygote (S01, `LEAN_ZYGOTE_PREFIX=Mod1,...`, sound build only): also import these modules completely
++    -- (`Lean.zygotePreparePrefix`); children whose import continues this prefix skip re-importing it.
++    if let some pfx ← IO.getEnv "LEAN_ZYGOTE_PREFIX" then
++      let pmods := ((pfx.split ',').toStringList.filter (· ≠ "")).map String.toName
++      unless pmods.isEmpty do
++        let leanOpts := opts.leanOpts.mergeBy (fun _ _ v => v) (Internal.getOptionOverrides ())
++        let t0 ← IO.monoMsNow
++        let k ← Lean.zygotePreparePrefix (pmods.toArray.map fun m => { module := m }) leanOpts
++        if (← IO.getEnv "LEAN_ZYGOTE_DEBUG").isSome then
++          IO.eprintln s!"zygote prefix: imported {k} modules in {(← IO.monoMsNow) - t0} ms"
+     return 0
+   -- as in `shellMain`
+   let opts := { opts with leanOpts := opts.leanOpts.mergeBy (fun _ _ v => v) (Internal.getOptionOverrides ()) }
+diff --git a/src/library/module.cpp b/src/library/module.cpp
+index 2eb5d2f0d2..1ce0eb03fe 100644
+--- a/src/library/module.cpp
++++ b/src/library/module.cpp
+@@ -7,6 +7,10 @@ Authors: Leonardo de Moura, Gabriel Ebner, Sebastian Ullrich
+ .olean serialization and deserialization.
+ */
+ #include <unordered_map>
++#include <unordered_set>
++#include <map>
++#include <mutex>
++#include <atomic>
+ #include <vector>
+ #include <utility>
+ #include <string>
+@@ -430,6 +434,87 @@ extern "C" LEAN_EXPORT object * lean_compacted_region_save(b_obj_arg ofname, b_o
+     return io_result_mk_ok(cs_obj.steal());
+ }
+ 
++#if defined(LEAN_MMAP) && defined(__linux__)
++/*
++Zygote THP placement (`LEAN_ZYGOTE_THP=<min KB>` together with `LEAN_ZYGOTE_BASE`; switched on by
++`src/util/shell.cpp` only while a base zygote prepares, via `lean_olean_thp_set`).
++
++Instead of a private file mapping at the saved `base_addr`, a file of at least `min` bytes (or one whose range
++touches a window claimed before) is read into private ANONYMOUS memory at exactly the same address, inside
++2MB-aligned windows advised `MADV_HUGEPAGE`. Bytes and addresses are those the file mapping would have had, so
++`region_reader` takes the same no-relocation path and the loaded objects are identical. Forked children inherit
++anonymous THP mappings together with their page-table entries (one PMD per 2MB), so they take no page faults on
++these regions and tear them down cheaply at exit. Any conflict (a window already occupied by another mapping, an
++overlap with a file placed before, a short read) falls back to the unchanged path below.
++*/
++static std::atomic<size_t> g_olean_thp_min(0);
++static std::map<uintptr_t, uintptr_t> * g_olean_thp_ranges = nullptr;  // placed files: start -> end
++static std::unordered_set<uintptr_t> * g_olean_thp_windows = nullptr;  // claimed 2MB windows
++static size_t g_olean_thp_files = 0, g_olean_thp_bytes = 0;
++static std::mutex * g_olean_thp_mutex = new std::mutex();
++
++extern "C" LEAN_EXPORT void lean_olean_thp_set(size_t min_bytes) {
++    std::lock_guard<std::mutex> l(*g_olean_thp_mutex);
++    if (min_bytes && !g_olean_thp_ranges) {
++        g_olean_thp_ranges = new std::map<uintptr_t, uintptr_t>();
++        g_olean_thp_windows = new std::unordered_set<uintptr_t>();
++    }
++    g_olean_thp_min = min_bytes;
++}
++
++extern "C" LEAN_EXPORT void lean_olean_thp_stats(size_t * files, size_t * bytes, size_t * windows) {
++    std::lock_guard<std::mutex> l(*g_olean_thp_mutex);
++    *files = g_olean_thp_files; *bytes = g_olean_thp_bytes;
++    *windows = g_olean_thp_windows ? g_olean_thp_windows->size() : 0;
++}
++
++static bool olean_thp_place(int fd, char * base, size_t size) {
++    const uintptr_t H = static_cast<uintptr_t>(2) << 20;
++    std::lock_guard<std::mutex> l(*g_olean_thp_mutex);
++    size_t min_bytes = g_olean_thp_min;
++    if (!min_bytes || size == 0 || !g_olean_thp_ranges) return false;
++    uintptr_t b = reinterpret_cast<uintptr_t>(base), e = b + size;
++    if (b % 4096 != 0 || e < b) return false;
++    uintptr_t lo = b & ~(H - 1), hi = (e + H - 1) & ~(H - 1);
++    bool touches = false;
++    for (uintptr_t w = lo; w < hi; w += H)
++        if (g_olean_thp_windows->count(w)) { touches = true; break; }
++    if (size < min_bytes && !touches) return false;
++    auto it = g_olean_thp_ranges->upper_bound(b);
++    if (it != g_olean_thp_ranges->end() && it->first < e) return false;
++    if (it != g_olean_thp_ranges->begin() && std::prev(it)->second > b) return false;
++    std::vector<uintptr_t> fresh;
++    for (uintptr_t w = lo; w < hi; w += H) {
++        if (g_olean_thp_windows->count(w)) continue;
++        void * p = mmap(reinterpret_cast<void *>(w), H, PROT_READ | PROT_WRITE,
++                        MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
++        if (p == MAP_FAILED || reinterpret_cast<uintptr_t>(p) != w) {
++            if (p != MAP_FAILED) munmap(p, H);
++            for (uintptr_t f : fresh) munmap(reinterpret_cast<void *>(f), H);
++            return false;
++        }
++        madvise(p, H, MADV_HUGEPAGE);
++        fresh.push_back(w);
++    }
++    size_t done = 0;
++    while (done < size) {
++        ssize_t r = pread(fd, base + done, size - done, static_cast<off_t>(done));
++        if (r < 0 && errno == EINTR) continue;
++        if (r <= 0) break;
++        done += static_cast<size_t>(r);
++    }
++    if (done != size) {
++        // fresh windows hold nothing but this file; bytes written into older windows are referenced by nobody
++        for (uintptr_t f : fresh) munmap(reinterpret_cast<void *>(f), H);
++        return false;
++    }
++    for (uintptr_t f : fresh) g_olean_thp_windows->insert(f);
++    (*g_olean_thp_ranges)[b] = e;
++    g_olean_thp_files++; g_olean_thp_bytes += size;
++    return true;
++}
++#endif
++
+ static object * mk_compacted_region(b_obj_arg ofname, object * root,
+                                     char * buffer, size_t base_addr, size_t full_sz, bool is_mmap) {
+     object * r = lean_alloc_ctor(0, 2, sizeof(size_t) * 3 + 1);
+@@ -527,6 +612,13 @@ extern "C" LEAN_EXPORT object * lean_compacted_region_read(b_obj_arg ofname, b_o
+         // mapping if `base_addr` is already taken; older kernels silently ignore the bit. macOS
+         // doesn't expose the flag at all (see top-of-file fallback). The post-check + cleanup
+         // `munmap` handles every "did not land at `base_addr`" case uniformly.
++#if defined(__linux__)
++        if (g_olean_thp_min && olean_thp_place(fd.get(), base_addr, size)) {
++            buffer = base_addr;
++            is_mmap = true;
++        } else
++#endif
++        {
+         int mmap_flags = MAP_PRIVATE
+ #ifdef MAP_FIXED_NOREPLACE
+             | MAP_FIXED_NOREPLACE
+@@ -540,6 +632,7 @@ extern "C" LEAN_EXPORT object * lean_compacted_region_read(b_obj_arg ofname, b_o
+             if (buffer != MAP_FAILED) munmap(buffer, size);
+             buffer = nullptr;
+         }
++        }
+ #endif
+ #endif
+ 
+diff --git a/src/util/shell.cpp b/src/util/shell.cpp
+index 206b038b4b..d7f38ce380 100644
+--- a/src/util/shell.cpp
++++ b/src/util/shell.cpp
+@@ -49,6 +49,7 @@ Author: Leonardo de Moura
+ #include <sys/mman.h>
+ #include <sys/un.h>
+ #include <sys/wait.h>
++#include <sys/resource.h>
+ #include <sys/prctl.h>
+ #include <poll.h>
+ #include <fcntl.h>
+@@ -291,6 +292,8 @@ the import; clients must use the same ones). LEAN_ZYGOTE_N=n: exit after serving
+ children); LEAN_ZYGOTE_IDLE=s: exit after s seconds without children (default 120).
+ */
+ extern "C" obj_res lean_zygote_prepare(obj_arg args, obj_arg shell_opts);
++extern "C" void lean_olean_thp_set(size_t min_bytes);
++extern "C" void lean_olean_thp_stats(size_t * files, size_t * bytes, size_t * windows);
+ extern "C" LEAN_EXPORT void lean_reset_task_manager_after_fork(unsigned num_workers);
+ 
+ namespace lean {
+@@ -333,8 +336,16 @@ static bool zygote_recv_request(int cfd, std::vector<std::string> & strs, int fd
+     return true;
+ }
+ 
++/* SIGCHLD self-pipe: the serve loop wakes up as soon as a child exits (instead of the next 100 ms poll timeout) */
++static int g_zygote_chld_pipe[2] = {-1, -1};
++static void zygote_on_sigchld(int) {
++    int e = errno; char c = 0; ssize_t w = write(g_zygote_chld_pipe[1], &c, 1); (void)w; errno = e;
++}
++
+ [[noreturn]] static void zygote_child(std::vector<std::string> const & strs, int fds[2]) {
+     signal(SIGPIPE, SIG_DFL);
++    signal(SIGCHLD, SIG_DFL);
++    if (g_zygote_chld_pipe[0] >= 0) { close(g_zygote_chld_pipe[0]); close(g_zygote_chld_pipe[1]); }
+     prctl(PR_SET_PDEATHSIG, SIGKILL);
+     int nul = open("/dev/null", O_RDONLY);
+     if (nul >= 0) { dup2(nul, 0); close(nul); }
+@@ -412,7 +423,21 @@ static int zygote_serve(int argc, char ** argv, object_ref const & shell_opts, c
+         int n = argc - optind;
+         char ** a = argv + optind;
+         while (n > 0) { n--; args = list_ref<string_ref>(string_ref(a[n]), args); }
++        /* LEAN_ZYGOTE_THP=<min KB> (base zygotes only, see library/module.cpp `olean_thp_place`): while preparing,
++           package/core olean files >= min KB are read into anonymous MADV_HUGEPAGE memory at their saved base
++           addresses instead of being file-mapped, so children inherit them with page tables (no faults). */
++        char const * thp = getenv("LEAN_ZYGOTE_THP");
++        size_t thp_kb = (thp && getenv("LEAN_ZYGOTE_BASE")) ? static_cast<size_t>(strtoull(thp, nullptr, 10)) : 0;
++        if (thp_kb) lean_olean_thp_set(thp_kb << 10);
+         uint32 prc = get_io_scalar_result<uint32>(lean_zygote_prepare(args.steal(), shell_opts.to_obj_arg()));
++        if (thp_kb) {
++            lean_olean_thp_set(0);
++            if (getenv("LEAN_ZYGOTE_DEBUG")) {
++                size_t f = 0, b = 0, w = 0;
++                lean_olean_thp_stats(&f, &b, &w);
++                std::cerr << "zygote: THP-placed " << f << " olean files (" << (b >> 20) << " MB) in " << w << " 2MB windows\n";
++            }
++        }
+         if (prc != 0) { std::cerr << "zygote: prepare failed\n"; return 3; }
+     }
+     zygote_touch_olean_maps();
+@@ -429,23 +454,61 @@ static int zygote_serve(int argc, char ** argv, object_ref const & shell_opts, c
+         std::cerr << "zygote: cannot listen on " << path << "\n";
+         return 3;
+     }
++    /* LEAN_ZYGOTE_REPLICAS=k (k > 1): after the (single) preparation, fork k-1 replicas that serve the same listening
++       socket (non-blocking accept: whichever replica wins the race forks the child). The replicas share every page of
++       the prepared zygote copy-on-write (nothing is written to the imported data afterwards), so k replicas cost
++       little memory, and the fork rate of one single-threaded serve loop no longer limits the build. Each replica reaps
++       only its own children; only the original process removes the socket path. */
++    bool zy_master = true;
++    {
++        int nrep = getenv("LEAN_ZYGOTE_REPLICAS") ? atoi(getenv("LEAN_ZYGOTE_REPLICAS")) : 1;
++        if (nrep > 1) {
++            int fl = fcntl(lfd, F_GETFL);
++            if (fl >= 0) fcntl(lfd, F_SETFL, fl | O_NONBLOCK);
++            for (int i = 1; i < nrep && zy_master; i++) {
++                fflush(stdout); fflush(stderr);
++                pid_t r = fork();
++                if (r == 0) zy_master = false;
++            }
++            if (getenv("LEAN_ZYGOTE_DEBUG") && zy_master) std::cerr << "zygote: " << nrep << " replicas serve " << path << "\n";
++        }
++    }
++    if (pipe2(g_zygote_chld_pipe, O_CLOEXEC | O_NONBLOCK) == 0) {
++        struct sigaction sa = {};
++        sa.sa_handler = zygote_on_sigchld;
++        sigemptyset(&sa.sa_mask);
++        sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
++        sigaction(SIGCHLD, &sa, nullptr);
++    } else {
++        g_zygote_chld_pipe[0] = g_zygote_chld_pipe[1] = -1;
++    }
+     unsigned max_n = getenv("LEAN_ZYGOTE_N") ? static_cast<unsigned>(atoi(getenv("LEAN_ZYGOTE_N"))) : 0;
+     double idle = getenv("LEAN_ZYGOTE_IDLE") ? atof(getenv("LEAN_ZYGOTE_IDLE")) : 120.0;
+     std::map<pid_t, int> kids;  // child pid -> client connection
++    std::map<pid_t, std::string> kid_file;  // child pid -> its .lean argument (rusage log only)
++    int zy_ru_fd = getenv("LEAN_ZYGOTE_RUSAGE") ? open(getenv("LEAN_ZYGOTE_RUSAGE"), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644) : -1;
+     unsigned served = 0;
+     auto last = std::chrono::steady_clock::now();
+     for (;;) {
+-        int st; pid_t p;
+-        while ((p = waitpid(-1, &st, WNOHANG)) > 0) {
++        int st; pid_t p; struct rusage ru;
++        while ((p = wait4(-1, &st, WNOHANG, &ru)) > 0) {
+             auto it = kids.find(p);
+             if (it == kids.end()) continue;
+             int32_t code = WIFEXITED(st) ? WEXITSTATUS(st) : 128 + (WIFSIGNALED(st) ? WTERMSIG(st) : 0);
++            if (zy_ru_fd >= 0) {  /* LEAN_ZYGOTE_RUSAGE=<file>: one line per child (measurement only) */
++                char line[1024];
++                int k = snprintf(line, sizeof(line), "%d %d %.3f %.3f %ld %ld %ld %s\n", static_cast<int>(p), static_cast<int>(code),
++                                 ru.ru_utime.tv_sec + ru.ru_utime.tv_usec / 1e6, ru.ru_stime.tv_sec + ru.ru_stime.tv_usec / 1e6,
++                                 ru.ru_maxrss, ru.ru_minflt, ru.ru_majflt, kid_file[p].substr(0, 900).c_str());
++                kid_file.erase(p);
++                if (k > 0) { ssize_t w0 = write(zy_ru_fd, line, static_cast<size_t>(k)); (void)w0; }
++            }
+             ssize_t w = write(it->second, &code, sizeof(code)); (void)w;
+             close(it->second);
+             kids.erase(it);
+             last = std::chrono::steady_clock::now();
+         }
+-        if (max_n && served >= max_n && lfd >= 0) { unlink(path.c_str()); close(lfd); lfd = -1; }
++        if (max_n && served >= max_n && lfd >= 0) { if (zy_master) unlink(path.c_str()); close(lfd); lfd = -1; }
+         if (kids.empty()) {
+             if (lfd < 0) break;
+             double el = std::chrono::duration<double>(std::chrono::steady_clock::now() - last).count();
+@@ -453,14 +516,17 @@ static int zygote_serve(int argc, char ** argv, object_ref const & shell_opts, c
+         }
+         std::vector<struct pollfd> pfds;
+         std::vector<pid_t> pids;
++        size_t b0 = 0;
++        if (g_zygote_chld_pipe[0] >= 0) { pfds.push_back({g_zygote_chld_pipe[0], POLLIN, 0}); b0 = 1; }
+         if (lfd >= 0) pfds.push_back({lfd, POLLIN, 0});
+         for (auto & kv : kids) { pfds.push_back({kv.second, POLLIN, 0}); pids.push_back(kv.first); }
+         int pr = poll(pfds.data(), pfds.size(), 100);
+         if (pr <= 0) continue;
+-        size_t k0 = 0;
++        if (b0 && (pfds[0].revents & POLLIN)) { char buf[256]; while (read(g_zygote_chld_pipe[0], buf, sizeof(buf)) > 0) {} }
++        size_t k0 = b0;
+         if (lfd >= 0) {
+-            k0 = 1;
+-            if (pfds[0].revents & POLLIN) {
++            k0 = b0 + 1;
++            if (pfds[b0].revents & POLLIN) {
+                 int cfd = accept4(lfd, nullptr, nullptr, SOCK_CLOEXEC);
+                 if (cfd >= 0) {
+                     std::vector<std::string> strs; int fds[2];
+@@ -476,7 +542,12 @@ static int zygote_serve(int argc, char ** argv, object_ref const & shell_opts, c
+                         }
+                         close(fds[0]); close(fds[1]);
+                         if (pid < 0) { int32_t code = 125; ssize_t w = write(cfd, &code, sizeof(code)); (void)w; close(cfd); }
+-                        else { kids[pid] = cfd; served++; }
++                        else {
++                            kids[pid] = cfd; served++;
++                            if (zy_ru_fd >= 0)
++                                for (auto const & a : strs)
++                                    if (a.size() > 5 && a.compare(a.size() - 5, 5, ".lean") == 0) kid_file[pid] = a;
++                        }
+                     }
+                 }
+             }
+@@ -490,7 +561,7 @@ static int zygote_serve(int argc, char ** argv, object_ref const & shell_opts, c
+             }
+         }
+     }
+-    if (lfd >= 0) { close(lfd); unlink(path.c_str()); }
++    if (lfd >= 0) { close(lfd); if (zy_master) unlink(path.c_str()); }
+     return 0;
+ }
+ }

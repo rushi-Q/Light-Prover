@@ -1,0 +1,6 @@
+name = "mini"
+srcDir = "src"
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]

@@ -1,0 +1,174 @@
+name: Mathlib
+
+on:
+  push:
+  workflow_dispatch:
+  # Scheduled runs skip the accepted-declaration cache.
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mathlib-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mathlib:
+    name: Mathlib (Lean ${{ matrix.lean }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lean: "4.34.1"
+            githash: 5045d0056413266e57c625dcd7c365b10e377c52
+            format: "3.1.0"
+            exporter: "0.5.0"
+            mathlib: d13f23b723b8a846827a245b89c10fc7d3f11612
+            declarations: 718577
+            coverage: a8e898c54b761ad374648e5b24ca25f040125409f8575a42458a37cb117e5a06
+    env:
+      CARGO_BUILD_JOBS: 2
+      MODULE: Mathlib
+      LEAN_VERSION: ${{ matrix.lean }}
+      LEAN_GITHASH: ${{ matrix.githash }}
+      EXPORT_FORMAT: ${{ matrix.format }}
+      EXPORTER_VERSION: ${{ matrix.exporter }}
+      MATHLIB_REV: ${{ matrix.mathlib }}
+      DECLARATIONS: ${{ matrix.declarations }}
+      COVERAGE: ${{ matrix.coverage }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - name: Build release checker
+        run: cargo build --release --locked --bin nl-fast
+      - uses: actions/cache/restore@v4
+        id: export
+        with:
+          path: |
+            .ci/mathlib.ndjson
+            .ci/mathlib.ndjson.sha256
+            .ci/mathlib.blean
+            .ci/mathlib.prelude.ndjson
+          key: mathlib-export-v5-${{ runner.os }}-lean-${{ matrix.lean }}-${{ matrix.mathlib }}-olean-export-${{ matrix.exporter }}
+      - name: Prepare runner disk
+        run: |
+          mkdir -p .ci/mathlib-report
+          if [[ "$EXPORT_CACHE_HIT" != true ]]; then
+            sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          fi
+          df -h . | tee .ci/mathlib-report/disk.txt
+        env:
+          EXPORT_CACHE_HIT: ${{ steps.export.outputs.cache-hit }}
+      - name: Restore Mathlib downloads
+        if: steps.export.outputs.cache-hit != 'true'
+        id: mathlib-downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/mathlib/*.ltar
+          # A new snapshot can include downloads missing from a failed run.
+          key: mathlib-downloads-${{ runner.os }}-${{ matrix.mathlib }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            mathlib-downloads-${{ runner.os }}-${{ matrix.mathlib }}-
+      - name: Build pinned Mathlib export
+        if: steps.export.outputs.cache-hit != 'true'
+        timeout-minutes: 40
+        run: |
+          git config --global init.defaultBranch main
+          echo '[progress] preparing the pinned Mathlib export'
+          started=$SECONDS
+          progress() {
+            while sleep 10; do
+              elapsed=$((SECONDS - started))
+              if [[ -f .ci/mathlib.ndjson ]]; then
+                echo "[progress] export ready; cleaning build files; elapsed ${elapsed}s"
+              elif [[ -f .ci/mathlib.ndjson.tmp ]]; then
+                bytes=$(stat -c %s .ci/mathlib.ndjson.tmp 2>/dev/null || echo 0)
+                echo "[progress] generating export; elapsed ${elapsed}s; ${bytes} bytes written"
+              else
+                echo "[progress] preparing Lean and Mathlib dependencies; elapsed ${elapsed}s"
+              fi
+              systemctl show nano-mathlib-export.service \
+                --property=MemoryCurrent --property=MemoryPeak --property=CPUUsageNSec \
+                2>/dev/null || true
+            done
+          }
+          progress &
+          progress_pid=$!
+          trap 'kill "$progress_pid" 2>/dev/null || true; wait "$progress_pid" 2>/dev/null || true' EXIT
+          # systemd-run services outlive the step's shell unless stopped explicitly.
+          trap 'sudo systemctl stop nano-mathlib-export.service || true; exit 130' INT TERM
+          bash .github/scripts/mathlib-ci.sh prepare
+      - name: Save Mathlib downloads even on failure
+        if: always() && steps.mathlib-downloads.outputs.cache-primary-key != '' && steps.mathlib-downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/mathlib/*.ltar
+          key: ${{ steps.mathlib-downloads.outputs.cache-primary-key }}
+      - name: Verify export checksum and coverage
+        id: verify-export
+        run: |
+          bash .github/scripts/mathlib-ci.sh verify
+      - uses: actions/cache/save@v4
+        if: always() && steps.verify-export.outcome == 'success' && steps.export.outputs.cache-hit != 'true'
+        with:
+          path: |
+            .ci/mathlib.ndjson
+            .ci/mathlib.ndjson.sha256
+            .ci/mathlib.blean
+            .ci/mathlib.prelude.ndjson
+          key: ${{ steps.export.outputs.cache-primary-key }}
+      - uses: actions/cache/restore@v4
+        if: github.event_name != 'schedule'
+        id: accepted
+        with:
+          path: .ci/mathlib.accepted
+          key: nl-cache-v1-${{ runner.os }}-mathlib-${{ matrix.mathlib }}-${{ hashFiles('src/**', 'Cargo.toml', 'Cargo.lock', 'build.rs', '.cargo/**') }}
+      - name: Check all Mathlib declarations
+        timeout-minutes: 47
+        run: bash .github/scripts/mathlib-ci.sh check
+        env:
+          NL_CACHE: ${{ github.event_name != 'schedule' && format('{0}/.ci/mathlib.accepted', github.workspace) || '' }}
+      - uses: actions/cache/save@v4
+        if: success() && github.event_name != 'schedule' && steps.accepted.outputs.cache-hit != 'true'
+        with:
+          path: .ci/mathlib.accepted
+          key: ${{ steps.accepted.outputs.cache-primary-key }}
+      - name: Check Mathlib blean on every core
+        timeout-minutes: 20
+        run: bash .github/scripts/mathlib-ci.sh check-blean
+      - name: Check primitives against Init and the axiom allowlist
+        timeout-minutes: 10
+        run: bash .github/scripts/mathlib-ci.sh audit
+      - name: Check Mathlib on the term core
+        if: github.event_name != 'push'
+        timeout-minutes: 40
+        run: bash .github/scripts/mathlib-ci.sh check-term-core
+      - name: Report result
+        if: always()
+        run: |
+          {
+            echo "### Mathlib, Lean $LEAN_VERSION"
+            if [[ -f .ci/mathlib-report/wall.txt ]]; then
+              echo "**$(cat .ci/mathlib-report/wall.txt)**"
+              echo
+            fi
+            echo "Mathlib ${MATHLIB_REV:0:12}; value core (nl-fast default); one worker; 200M steps and 2 GiB arena per declaration; 11 GiB OS limit; 45 minute runtime cap."
+            echo "olean-export $EXPORTER_VERSION; 14 GiB export OS limit; cache hits skip generation."
+            echo "Export coverage must match the $DECLARATIONS pinned declaration names."
+            echo '```text'
+            cat .ci/mathlib-report/export-time.txt 2>/dev/null || true
+            cat .ci/mathlib-report/summary.txt 2>/dev/null || true
+            tail -n 3 .ci/mathlib-report/trace.log 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mathlib-lean-${{ matrix.lean }}-${{ github.sha }}
+          path: .ci/mathlib-report/
+          if-no-files-found: warn
+          retention-days: 14

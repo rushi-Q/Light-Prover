@@ -1,0 +1,7 @@
+# case official_rc official_sha16 (live official run)
+proj-honest 0 1e3045eb3fbf00af
+proj-defbody 0 7c8f84d326665660
+proj-classical 1 9369e16bd61e1b72
+proj-stmt 1 2996e88ea09aa820
+proj-sorry 1 2b18ed8d4cb9d55d
+proj-extra-thm 0 35a74aa885fffc6f

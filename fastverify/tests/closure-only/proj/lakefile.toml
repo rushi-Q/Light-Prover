@@ -1,0 +1,8 @@
+name = "closuretest"
+defaultTargets = ["Pkg", "Main"]
+
+[[lean_lib]]
+name = "Pkg"
+
+[[lean_lib]]
+name = "Main"

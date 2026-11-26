@@ -1,0 +1,13 @@
+[package]
+name = "expdiff"
+version = "0.1.0"
+edition = "2021"
+description = "Export-level evidence and kernel-term analysis for proof compression; loader from kcompare"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = false

@@ -1,0 +1,27 @@
+Check.«space in name»
+Nat.add
+Nat.sub
+Nat.mul
+Nat.pow
+Nat.gcd
+Nat.div
+Nat.mod
+Nat.beq
+Nat.ble
+Nat.land
+Nat.lor
+Nat.xor
+Nat.shiftLeft
+Nat.shiftRight
+String.ofList
+Char.ofNat
+List
+eagerReduce
+Nat
+String
+String.mk
+Char
+optParam
+autoParam
+semiOutParam
+outParam

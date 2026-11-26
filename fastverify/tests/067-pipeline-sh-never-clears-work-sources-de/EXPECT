@@ -1,0 +1,6 @@
+# case official_rc official_sha16 (reproduction: v1 accepted, v2/v3 rejected by the official flow)
+setup-v1-fresh 0 -
+case-a-v2-reuse 1 -
+case-b-v3-reuse 1 -
+case-a-v2-fresh 1 -
+case-b-v3-fresh 1 -

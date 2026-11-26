@@ -1,0 +1,7 @@
+{
+  "challenge_module": "Probe",
+  "solution_module": "Probe",
+  "theorem_names": ["ZReview.literalBytes"],
+  "definition_names": [],
+  "permitted_axioms": []
+}

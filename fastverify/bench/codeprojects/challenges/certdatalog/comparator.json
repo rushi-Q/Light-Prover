@@ -1,0 +1,13 @@
+{
+ "challenge_module": "Challenge",
+ "solution_module": "CertifyingDatalog",
+ "theorem_names": [
+  "Graph.checkValidityIsOkIffAcyclicAndAllValid"
+ ],
+ "definition_names": [],
+ "permitted_axioms": [
+  "propext",
+  "Quot.sound",
+  "Classical.choice"
+ ]
+}

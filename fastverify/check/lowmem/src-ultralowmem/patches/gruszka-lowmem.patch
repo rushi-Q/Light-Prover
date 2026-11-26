@@ -1,0 +1,288 @@
+diff -ruN '--exclude=target' '--exclude=.git' a/src/main.rs b/src/main.rs
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -154,28 +154,43 @@
+ /// (the system keeps them in its file cache). Readers in other threads see
+ /// the same bytes before and after.
+ #[cfg(unix)]
+-fn remap(bytes: &[u8], path: &str) -> bool {
+-    use std::os::fd::AsRawFd;
++fn remap_fd(bytes: &[u8], fd: i32, drop_cache: bool) -> bool {
+     unsafe extern "C" {
+         fn mmap(addr: *mut u8, len: usize, prot: i32, flags: i32, fd: i32, off: i64) -> *mut u8;
++        #[cfg(target_os = "linux")]
++        fn posix_fadvise(fd: i32, offset: i64, len: i64, advice: i32) -> i32;
+     }
+-    #[cfg(target_os = "macos")]
+-    const MAP_FIXED: i32 = 0x10;
+-    #[cfg(not(target_os = "macos"))]
+     const MAP_FIXED: i32 = 0x10;
+     const PROT_READ: i32 = 1;
+     const MAP_SHARED: i32 = 1;
++    let p = bytes.as_ptr() as *mut u8;
++    let r = unsafe { mmap(p, bytes.len(), PROT_READ, MAP_SHARED | MAP_FIXED, fd, 0) };
++    #[cfg(target_os = "linux")]
++    if r == p && drop_cache {
++        unsafe { posix_fadvise(fd, 0, 0, 4) };
++    }
++    r == p
++}
++#[cfg(not(unix))]
++fn remap_fd(_bytes: &[u8], _fd: i32, _drop_cache: bool) -> bool {
++    false
++}
++
++#[cfg(unix)]
++fn remap(bytes: &[u8], path: &str, keep_fd: Option<i32>) -> bool {
++    if let Some(fd) = keep_fd {
++        return remap_fd(bytes, fd, true);
++    }
++    use std::os::fd::AsRawFd;
+     let Ok(f) = std::fs::File::open(path) else { return false };
+     match f.metadata() {
+         Ok(m) if m.len() as usize == bytes.len() => {}
+         _ => return false,
+     }
+-    let p = bytes.as_ptr() as *mut u8;
+-    let r = unsafe { mmap(p, bytes.len(), PROT_READ, MAP_SHARED | MAP_FIXED, f.as_raw_fd(), 0) };
+-    r == p
++    remap_fd(bytes, f.as_raw_fd(), false)
+ }
+ #[cfg(not(unix))]
+-fn remap(_bytes: &[u8], _path: &str) -> bool {
++fn remap(_bytes: &[u8], _path: &str, _keep_fd: Option<i32>) -> bool {
+     false
+ }
+ 
+@@ -614,7 +629,28 @@
+         BIG_THP.store(true, std::sync::atomic::Ordering::Relaxed);
+     }
+     let gz_time = k02t || std::env::var_os("GZ_TIME").is_some();
+-    let (progress, args) = progress_of(&std::env::args().collect::<Vec<_>>());
++    // D11 low-mem flags: --low-mem (or GRUSZKA_LOW_MEM=1), --pack-dir=DIR, --pack-threads=N
++    let mut low_mem = std::env::var_os("GRUSZKA_LOW_MEM").is_some();
++    let mut pack_dir: Option<String> = std::env::var("GRUSZKA_PACK_DIR").ok();
++    let mut pack_threads_opt: Option<usize> = None;
++    let mut raw_args = Vec::new();
++    for a in std::env::args() {
++        if a == "--low-mem" {
++            low_mem = true;
++        } else if let Some(d) = a.strip_prefix("--pack-dir=") {
++            pack_dir = Some(d.to_string());
++            low_mem = true;
++        } else if let Some(t) = a.strip_prefix("--pack-threads=") {
++            if let Ok(n) = t.parse::<usize>() {
++                if n >= 1 {
++                    pack_threads_opt = Some(n);
++                }
++            }
++        } else {
++            raw_args.push(a);
++        }
++    }
++    let (progress, args) = progress_of(&raw_args);
+     // milestone 26: `--only NAME[,NAME...]` anywhere, as Pestka takes it
+     let only_names: Option<Vec<String>> = only_of(&args[1..]);
+     let args: Vec<String> = match &only_names {
+@@ -625,7 +661,7 @@
+         finish(2, "declined: usage: gruszka --only NAME[,NAME...] FILE.susz [WORKERS]; NAME may be Foo.* for every name under Foo");
+     }
+     if args.len() < 2 {
+-        eprintln!("usage: gruszka [--progress[=SECS]] FILE [WORKERS] | gruszka --only NAME[,NAME...] FILE.susz [WORKERS]");
++        eprintln!("usage: gruszka [--low-mem] [--pack-dir=DIR] [--pack-threads=N] [--progress[=SECS]] FILE [WORKERS] | gruszka --only NAME[,NAME...] FILE.susz [WORKERS]");
+         std::process::exit(2);
+     }
+     let path = &args[1];
+@@ -644,6 +680,7 @@
+     // DI<TAB>index<TAB>name<TAB>instructions<TAB>ns<TAB>counters
+     let decl_instr = std::env::var("SK_DECL_INSTR").is_ok();
+     let mut mapped = false;
++    let mut keep_fd: Option<i32> = None;
+     const NOT_SUSZ: &str =
+         "declined: --only checks part of a Susz file, by its INDEX: pack the export first (susz pack FILE.ndjson FILE.susz)";
+     // K01: an export is packed in this process: a file named .ndjson, or
+@@ -658,7 +695,64 @@
+     }
+     // K01: where the packer's MAIN segments start (for the parallel load)
+     let mut seg_starts: Vec<susz::read::SegStart> = Vec::new();
+-    let bytes: &'static [u8] = if is_ndjson {
++    let bytes: &'static [u8] = if is_ndjson && low_mem {
++        // D11 low-mem: pack to an immediately-unlinked temp .susz file on disk,
++        // freeing the entire packer state before mmap + periodic remap() page eviction!
++        let pdir = pack_dir
++            .or_else(|| std::env::var("TMPDIR").ok())
++            .unwrap_or_else(|| "/tmp".to_string());
++        let tmp_susz = format!("{}/gruszka-lowmem-{}.susz", pdir.trim_end_matches('/'), std::process::id());
++        let pthreads = pack_threads_opt.unwrap_or_else(|| workers.min(4)).max(1);
++        let opts = susz::pack::Options { index: false, threads: pthreads };
++        match susz::pack::pack_file_segs(path, &tmp_susz, &opts) {
++            Ok((_st, ss)) => {
++                seg_starts = ss;
++            }
++            Err(e) => {
++                let _ = std::fs::remove_file(&tmp_susz);
++                match e.fault {
++                    // Preserve F06 fix-039: format-level faults DECLINE (exit 2), never reject!
++                    susz::pack::Fault::Invalid => finish(2, &format!("declined: the packer finds the export invalid (format level; the official parser may accept it): {}", e.msg)),
++                    susz::pack::Fault::Cannot => finish(2, &format!("declined: cannot pack: {}", e.msg)),
++                }
++            }
++        }
++        #[cfg(unix)]
++        {
++            use std::os::fd::AsRawFd;
++            let f = match std::fs::File::open(&tmp_susz) {
++                Ok(f) => f,
++                Err(e) => {
++                    let _ = std::fs::remove_file(&tmp_susz);
++                    finish(2, &format!("declined: cannot open packed {tmp_susz}: {e}"));
++                }
++            };
++            let m = match unsafe { susz::open_mmap(&tmp_susz) } {
++                Ok(m) => m,
++                Err(e) => {
++                    let _ = std::fs::remove_file(&tmp_susz);
++                    finish(2, &format!("declined: cannot mmap packed {tmp_susz}: {e}"));
++                }
++            };
++            let _ = std::fs::remove_file(&tmp_susz);
++            let f_static: &'static std::fs::File = Box::leak(Box::new(f));
++            keep_fd = Some(f_static.as_raw_fd());
++            let m: &'static susz::Mapped = Box::leak(Box::new(m));
++            mapped = m.is_mapped();
++            m
++        }
++        #[cfg(not(unix))]
++        {
++            match unsafe { susz::open_mmap(&tmp_susz) } {
++                Ok(m) => {
++                    let m: &'static susz::Mapped = Box::leak(Box::new(m));
++                    mapped = m.is_mapped();
++                    m
++                }
++                Err(e) => finish(2, &format!("declined: cannot open {tmp_susz}: {e}")),
++            }
++        }
++    } else if is_ndjson {
+         // milestone 24: packed on as many threads as there are workers
+         let opts = susz::pack::Options { index: false, threads: workers };
+         match susz::pack::pack_to_vec_segs(path, &opts) {
+@@ -765,11 +859,12 @@
+     };
+     // the MAIN pages were copied into columns: let them go
+     let remap_on = mapped;
+-    if remap_on && !remap(bytes, path) {
++    if remap_on && !remap(bytes, path, keep_fd) {
+         eprintln!("note: could not map the file again");
+     }
+     let nd = env.decl_rows.len();
+     if k02t { eprintln!("K02 t layout+remap {:.3}", t_start.elapsed().as_secs_f64()); }
++    tc::set_low_mem(low_mem);
+     tc::set_workers(workers);
+     let shared: &'static tc::Shared = Box::leak(Box::new(tc::Shared::new(env.main.len(), env.consts.len())));
+     let first_fail: &'static AtomicU32 = Box::leak(Box::new(AtomicU32::new(u32::MAX)));
+@@ -878,11 +973,12 @@
+     const SPILL_MS: u128 = 20;
+     let spill: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+     // milestone 42: GRUSZKA_STACK_MB (the deep vectors run at 16 MiB)
++    let default_stack = if low_mem { 128 << 20 } else { 1 << 30 };
+     let stack: usize = std::env::var("GRUSZKA_STACK_MB")
+         .ok()
+         .and_then(|s| s.parse::<usize>().ok())
+         .filter(|&m| (4..=1 << 20).contains(&m))
+-        .map_or(1 << 30, |m| m << 20);
++        .map_or(default_stack, |m| m << 20);
+     let stack_limit = stack - (stack / 4).min(64 << 20);
+     // per worker: declaration being checked (u32::MAX: none)
+     let running: Vec<AtomicU32> = (0..workers).map(|_| AtomicU32::new(u32::MAX)).collect();
+@@ -964,7 +1060,7 @@
+                 while !all_done.load(Ordering::Relaxed) {
+                     std::thread::park_timeout(std::time::Duration::from_millis(1000).saturating_sub(last.elapsed()));
+                     if !all_done.load(Ordering::Relaxed) && last.elapsed().as_millis() >= 1000 {
+-                        remap(bytes, path);
++                        remap(bytes, path, keep_fd);
+                         last = Instant::now();
+                     }
+                 }
+diff -ruN '--exclude=target' '--exclude=.git' a/src/tc.rs b/src/tc.rs
+--- a/src/tc.rs
++++ b/src/tc.rs
+@@ -142,13 +142,19 @@
+ /// a session, `SESSION_MIB`), was 16 MiB; mathlib w4 (knobs) 16 / 4 / 1 /
+ /// 0.25 MiB: 419.5 / 419.4 / 421.5 / 434.0 G.
+ const KEEP_BYTES: usize = 4 << 20;
++const LOW_MEM_KEEP_BYTES: usize = 512 << 10;
++static LOW_MEM: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++pub fn set_low_mem(on: bool) {
++    LOW_MEM.store(on, Ordering::Relaxed);
++}
+ fn keep_bytes() -> usize {
+     static K: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+     *K.get_or_init(|| {
++        let base = if LOW_MEM.load(Ordering::Relaxed) { LOW_MEM_KEEP_BYTES } else { KEEP_BYTES };
+         let k = if KNOBS {
+-            std::env::var("SK_KEEP_KIB").ok().and_then(|s| s.parse::<usize>().ok()).map_or(KEEP_BYTES, |k| k << 10)
++            std::env::var("SK_KEEP_KIB").ok().and_then(|s| s.parse::<usize>().ok()).map_or(base, |k| k << 10)
+         } else {
+-            KEEP_BYTES
++            base
+         };
+         // not divided by `capped`: room is not kept knowledge, and a
+         // worker's tables grew again at every session (mathlib w4 with the
+@@ -166,8 +172,9 @@
+ static CAP_DIV: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+ /// Called once before the workers start.
+ pub fn set_workers(n: usize) {
+-    // K02: K02_CAPW=n sets the worker count the caps were set at (default CAP_WORKERS)
+-    let capw = std::env::var("K02_CAPW").ok().and_then(|s| s.parse::<usize>().ok()).filter(|&c| c >= 1).unwrap_or(CAP_WORKERS);
++    // K02: K02_CAPW=n sets the worker count the caps were set at (default CAP_WORKERS, or 1 in --low-mem)
++    let default_capw = if LOW_MEM.load(Ordering::Relaxed) { 1 } else { CAP_WORKERS };
++    let capw = std::env::var("K02_CAPW").ok().and_then(|s| s.parse::<usize>().ok()).filter(|&c| c >= 1).unwrap_or(default_capw);
+     let mut d = n.div_ceil(capw).clamp(1, 64);
+     if KNOBS {
+         if let Some(x) = std::env::var("SK_CAP_DIV").ok().and_then(|s| s.parse::<usize>().ok()) {
+diff -ruN '--exclude=target' '--exclude=.git' a/vendor/susz/src/pack/mod.rs b/vendor/susz/src/pack/mod.rs
+--- a/vendor/susz/src/pack/mod.rs
++++ b/vendor/susz/src/pack/mod.rs
+@@ -257,19 +257,38 @@
+     Ok(st)
+ }
+ 
++/// D11 low-mem: `pack_file` also returning MAIN segment starts for `read::decode_par`
++/// without holding the packed `.susz` bytes in heap RAM.
++pub fn pack_file_segs(input: &str, output: &str, opts: &Options) -> R<(Stats, Vec<crate::read::SegStart>)> {
++    tmark("start");
++    let (pk, parallel) = read(input, opts)?;
++    tmark("read");
++    let mut segs = Vec::new();
++    let mut st = write_file_segs(pk, output, opts, Some(&mut segs))?;
++    st.parallel = parallel;
++    Ok((st, segs))
++}
++
+ // Writes what `pk` read to `output`, under a temporary name renamed when
+ // complete (packing, slicing).
+ pub(crate) fn write_file(pk: pk::Pk, output: &str, opts: &Options) -> R<Stats> {
++    write_file_segs(pk, output, opts, None)
++}
++
++fn write_file_segs(
++    pk: pk::Pk,
++    output: &str,
++    opts: &Options,
++    seg_starts: Option<&mut Vec<crate::read::SegStart>>,
++) -> R<Stats> {
+     let tmp = format!("{output}.tmp-{}", std::process::id());
+     crate::cleanup::register(&tmp);
+     let res = (|| {
+         let f = std::fs::File::create(&tmp).map_err(|e| cant!("cannot write {tmp}: {e}"))?;
+         let mut w = std::io::BufWriter::with_capacity(1 << 20, f);
+-        let st = write::write(pk, &mut w, opts.index, opts.threads)?;
++        let st = write::write_segs(pk, &mut w, opts.index, opts.threads, seg_starts)?;
+         use std::io::Write;
+         w.flush().map_err(|e| cant!("cannot write {tmp}: {e}"))?;
+-        // complete for every other process once renamed; no fsync (on macOS a
+-        // full flush to the device costs seconds on mathlib)
+         let f = w
+             .into_inner()
+             .map_err(|e| cant!("cannot write {tmp}: {e}"))?;

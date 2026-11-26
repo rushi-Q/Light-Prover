@@ -1,0 +1,67 @@
+{
+ "lean": {
+  "argv": [
+   "/scratch/fastverify-next/sound/53957eed/pleanchecker",
+   "-j{threads}",
+   "-v",
+   "--from-export",
+   "{export}"
+  ],
+  "env": {
+   "LEAN_ABORT_ON_PANIC": "1",
+   "LEAN_NUM_THREADS": "{threads}",
+   "LEAN_STACK_SIZE_KB": "917376",
+   "PCHK_PRIO_FILE": "{here}/legs/empty.hints",
+   "PCHK_SLOW_MS": "10000"
+  }
+ },
+ "k2": {
+  "argv": [
+   "/scratch/fastverify-next/gruszka/ece04e74/gruszka",
+   "{export}",
+   "{threads}"
+  ],
+  "env": {}
+ },
+ "ro": [
+  "/scratch/fastverify-next",
+  "{here}/legs/empty.hints",
+  "$ELAN_HOME/toolchains/leanprover--lean4---v4.36.0"
+ ],
+ "comment": "pins.env portable-v1 legs + BOTH veto-only extra kernels as check-sound.sh v2.3-H runs them with --kernel nanoda: con-leche 8fff3f05, nanoda_bin 5c34d612 (config = the one check-sound.sh writes: 1 GiB stacks, all axioms admitted)",
+ "extra": {
+  "con-leche": {
+   "argv": [
+    "/scratch/fastverify-next/extra-kernels/8fff3f05/con-leche",
+    "--verified",
+    "--jobs={kjobs}",
+    "--",
+    "{export}"
+   ],
+   "env": {
+    "LEAN_ABORT_ON_PANIC": "1"
+   }
+  },
+  "nanoda": {
+   "argv": [
+    "/scratch/fastverify-next/extra-kernels/5c34d612/nanoda_bin",
+    "{config}"
+   ],
+   "env": {
+    "LEAN_ABORT_ON_PANIC": "1"
+   },
+   "config": {
+    "export_file_path": "{export}",
+    "use_stdin": false,
+    "num_threads": "{kjobs}",
+    "stack_size_bytes": 1073741824,
+    "nat_extension": true,
+    "string_extension": true,
+    "unpermitted_axiom_hard_error": false,
+    "unsafe_permit_all_axioms": true,
+    "print_success_message": true,
+    "pp_declars": []
+   }
+  }
+ }
+}

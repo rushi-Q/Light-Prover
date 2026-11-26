@@ -1,0 +1,11 @@
+--- a/vendor/nano-lean/src/import/importer.rs
++++ b/vendor/nano-lean/src/import/importer.rs
+@@ -174,7 +174,7 @@
+ 
+ const MAX_GAP: usize = 1 << 16;
+ /// Decimal parsing is quadratic, so 4M digits would already take 10s.
+-const MAX_NAT_DIGITS: usize = 1 << 16;
++const MAX_NAT_DIGITS: usize = 1 << 22; // X08 fix-065: 4M digits (was 1 << 16 = 65,536)
+ 
+ /// Empty dense slots stay within `MAX_GAP` or the filled count, so ids that would open more go to
+ /// `sparse` and forged ids cannot force an allocation beyond the input's size.

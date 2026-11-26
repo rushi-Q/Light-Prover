@@ -1,0 +1,3 @@
+{"challenge_module": "Challenge", "solution_module": "Solution",
+ "theorem_names": ["t_add", "t_pow", "t_secret", "t_hole", "t_em"],
+ "definition_names": ["hole"], "permitted_axioms": ["propext", "Quot.sound", "Classical.choice"]}

@@ -1,0 +1,15 @@
+{"meta":{}}
+{"in":1,"str":{"pre":0,"str":"String"}}
+{"in":2,"str":{"pre":0,"str":"label"}}
+{"in":3,"str":{"pre":0,"str":"Char"}}
+{"in":4,"str":{"pre":3,"str":"ofNat"}}
+{"il":1,"succ":0}
+{"ie":0,"sort":1}
+{"ie":1,"sort":0}
+{"axiom":{"name":1,"levelParams":[],"type":0,"isUnsafe":false}}
+{"const":{"name":1,"us":[]},"ie":2}
+{"ie":3,"strVal":""}
+{"ie":4,"letE":{"body":1,"name":0,"nondep":false,"type":2,"value":3}}
+{"def":{"all":[2],"hints":"abbrev","levelParams":[],"name":2,"safety":"safe","type":0,"value":4}}
+{"const":{"name":2,"us":[]},"ie":5}
+{"axiom":{"name":4,"levelParams":[],"type":5,"isUnsafe":false}}

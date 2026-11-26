@@ -1,0 +1,153 @@
+#!/bin/bash
+# fetch.sh NAME [ROOT] : clone the project of projects.tsv (public git, outside any sandbox: NO code is run), export the
+# pinned commit's SUBDIR to ROOT/projects/NAME (no .git), apply the documented port edits, and assemble the clean challenge
+# ROOT/projects/NAME-challenge = challenges/<name>/ (Challenge.lean, comparator.json, lakefile.toml, manifest, toolchain) +
+# the project's own module trees (definitions the statements mention; the challenge's lakefile builds only Challenge's
+# import closure). Third-party sources are never stored in the package: they are re-exported from the pinned commit here.
+set -eu
+H=$(cd "$(dirname "$0")/.." && pwd); N=$1; ROOT=${2:-/scratch/$USER/codeprojects}
+IFS=$'\t' read -r _ REPO C SUB _ <<<"$(awk -F'\t' -v n="$N" '$1==n' "$H/projects.tsv")"
+[ -n "${REPO:-}" ] || { echo "unknown project $N" >&2; exit 2; }
+mkdir -p "$ROOT/src" "$ROOT/projects"; S=$ROOT/src/$(basename "$REPO")
+[ -d "$S/.git" ] || git clone -q --filter=blob:none --no-checkout "$REPO" "$S"
+P=$ROOT/projects/$N; rm -rf "$P" "$P.tmp"; mkdir -p "$P.tmp"
+if [ "$SUB" = . ]; then git -C "$S" archive "$C" | tar -x -C "$P.tmp"; mv "$P.tmp" "$P"
+else git -C "$S" archive "$C" "$SUB" | tar -x -C "$P.tmp"; mv "$P.tmp/$SUB" "$P"; rm -rf "$P.tmp"; fi
+CH=$N
+case $N in
+  cedartoml|cedarsym) CH=cedar; [ $N = cedarsym ] && CH=cedarsym
+    rm "$P/lakefile.lean"
+    cat > "$P/lakefile.toml" <<'TOML'
+name = "Cedar"
+defaultTargets = ["Cedar", "SymCC"]
+
+[[require]]
+name = "batteries"
+scope = "leanprover-community"
+rev = "v4.33.0"
+
+[[lean_lib]]
+name = "Cedar"
+
+[[lean_lib]]
+name = "SymCC"
+TOML
+    ;;
+  sampcerttoml) CH=sampcert
+    rm "$P/lakefile.lean"
+    cat > "$P/lakefile.toml" <<'TOML'
+name = "sampcert"
+defaultTargets = ["SampCert"]
+
+[[require]]
+name = "doc-gen4"
+git = "https://github.com/leanprover/doc-gen4"
+rev = "v4.33.1"
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4.git"
+rev = "v4.33.1"
+
+[[lean_lib]]
+name = "SampCert"
+TOML
+    ;;
+  cleantoml) CH=clean
+    rm "$P/lakefile.lean"
+    cat > "$P/lakefile.toml" <<'TOML'
+name = "Clean"
+defaultTargets = ["Clean"]
+
+[leanOptions]
+pp.unicode.fun = true
+autoImplicit = false
+relaxedAutoImplicit = false
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.33.1"
+
+[[lean_lib]]
+name = "Clean"
+
+[[lean_lib]]
+name = "CleanTests"
+roots = ["Clean.Test", "Clean.Specs.BLAKE3.ChunkProcessingTests"]
+TOML
+    ;;
+  vcviotoml) CH=vcvio
+    rm "$P/lakefile.lean"
+    cat > "$P/lakefile.toml" <<'TOML'
+name = "VCVio"
+defaultTargets = ["VCVio"]
+
+[leanOptions]
+pp.unicode.fun = true
+pp.proofs.withType = false
+autoImplicit = false
+relaxedAutoImplicit = false
+
+[[require]]
+name = "loom2"
+git = "https://github.com/quangvdao/loom2"
+rev = "2f65f311fae959c302586b07aa45390999b935d4"
+
+[[require]]
+name = "PolyFun"
+git = "https://github.com/Verified-zkEVM/PolyFun.git"
+rev = "bb7e1003544b8461e3d484fc51c61b2ff865250f"
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.33.1"
+
+[[lean_lib]]
+name = "VCVio"
+
+[[lean_lib]]
+name = "ToMathlib"
+TOML
+    ;;
+  certdatalogtoml) CH=certdatalog
+    rm "$P/lakefile.lean"
+    cat > "$P/lakefile.toml" <<'TOML'
+name = "certifyingDatalog"
+defaultTargets = ["CertifyingDatalog"]
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "v4.33.1"
+
+[[lean_lib]]
+name = "CertifyingDatalog"
+TOML
+    ;;
+esac
+# port of a Mathlib db584cd6 (v4.33.0) project = the one Mathlib commit that only bumps lean-toolchain (as bench/bigprojects)
+ML=0df444a360eaa60ab8c11dca51a86af692955474
+if grep -q db584cd6d46c92f209a44c0f1c829460d327499d "$P/lake-manifest.json"; then
+  echo "leanprover/lean4:v4.33.1" > "$P/lean-toolchain"
+  sed -i "s/db584cd6d46c92f209a44c0f1c829460d327499d/$ML/g" "$P/lake-manifest.json"
+  [ -f "$P/lakefile.toml" ] && sed -i 's/^rev = "v4.33.0"$/rev = "v4.33.1"/' "$P/lakefile.toml"
+fi
+# challenge: the package's challenge files + the project's module trees (top-level dirs/files with .lean content)
+Q=$P-challenge; rm -rf "$Q"; mkdir -p "$Q"
+( cd "$P" && find . -maxdepth 1 -mindepth 1 \( -name '*.lean' -o -type d \) ! -name '.*' ! -name 'lakefile.lean' -print0 \
+    | xargs -0 -I{} cp -a {} "$Q/" )
+cp -a "$H/challenges/$CH/." "$Q/"
+# prefix.txt = 'FILE THEOREM': the challenge's copy of FILE (same path = same MODULE NAME, so private / hygienic /
+# auxiliary names of its earlier declarations are the project's) = FILE up to THEOREM + its statement with sorry
+# (tools/mkprefix.py); Challenge.lean imports that module. (v1 put the prefix into Challenge.lean itself: the official
+# comparator rejected it - e.g. Clean's nextState._proof_9 refers to a private name of the original module.)
+if [ -f "$Q/prefix.txt" ]; then
+  read -r PF PT < "$Q/prefix.txt"   # PT: one theorem or a comma list (cut at the last one in the file); python3 -I "$H/tools/mkprefix.py" "$P" "$PF" "$PT" "$Q/$PF" || exit 1; rm "$Q/prefix.txt"
+  printf '/- GENERATED by tools/fetch.sh: the statement lives in the truncated copy of %s (tools/mkprefix.py). -/\nimport %s\n' \
+    "$PF" "$(echo "${PF%.lean}" | tr / .)" > "$Q/Challenge.lean"
+fi
+# no manifest in the challenge files: the project's (ported) manifest, renamed (same urls/revs as the trusted workspace)
+[ -f "$Q/lake-manifest.json" ] || python3 -I -c 'import json,sys; m=json.load(open(sys.argv[1])); m["name"]="challenge"; json.dump(m, open(sys.argv[2],"w"), indent=1)' "$P/lake-manifest.json" "$Q/lake-manifest.json"
+echo "$P ($(find "$P" -name '*.lean' | wc -l) .lean files) + $Q"

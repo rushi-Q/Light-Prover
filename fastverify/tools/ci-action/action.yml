@@ -1,0 +1,203 @@
+name: "fastverify Sound Lean 4 Verification Gate"
+description: "Cheat-proof, dual-kernel sound verification PR/CI gate for Lean 4 formalizations with incremental caching, statement-drift alerts, sorry-frontier ledgers, and SARIF 2.1.0 annotations."
+author: "Light-Prover / fastverify"
+inputs:
+  experimental:
+    description: "the CI action is EXPERIMENTAL in fastverify v0.1: set to \"true\" to run it; otherwise the step fails by itself with exit 2 and a message saying so"
+    required: false
+    default: "false"
+  project:
+    description: "Path to the Lean 4 project directory to verify"
+    required: false
+    default: "."
+  challenge:
+    description: "Path to the clean challenge directory (comparator.json + official challenge.export)"
+    required: true
+  challenge-sha256:
+    description: "64-hex SHA-256 pin of the official challenge.export (required for sound mode)"
+    required: true
+  comparator-sha256:
+    description: "64-hex SHA-256 pin of comparator.json (REQUIRED with challenge-sha256: the two pins are the challenge identity)"
+    required: true
+  packages:
+    description: "Path to trusted Lake workspace containing materialized .lake/packages"
+    required: false
+    default: ""
+  fastverify-root:
+    description: "Path to fastverify installation root"
+    required: false
+    default: ""
+  preset:
+    description: "Verification preset (sound-auto, sound, notary); other presets are refused by the gate"
+    required: false
+    default: "sound-auto"
+  pins:
+    description: "Optional trusted pins profile (436, 437, or path to pins*.env under check/sound/)"
+    required: false
+    default: ""
+  no-integrity-cache:
+    description: "Disable sound-auto E20 integrity records (re-verify all toolchains & pins every run)"
+    required: false
+    default: "false"
+  cache-dir:
+    description: "Persistent CI cache directory holding the last good incremental base build & integrity cache. Keep it OUTSIDE the project (a cache inside it is copied into every saved base: each run nests the previous cache); default: $RUNNER_TEMP/fastverify-ci-cache (persist it with actions/cache)"
+    required: false
+    default: ""
+  closure-only:
+    description: "Build only the solution module's import closure (matches lake comparator semantics)"
+    required: false
+    default: "true"
+  confirm-reject:
+    description: "Re-verify B3 rejections with exact B1 build (recommended for @[to_dual] libraries)"
+    required: false
+    default: "false"
+  frontier:
+    description: "Enable Day 1-99 conditional sorry-frontier verification (verdict CONDITIONAL, exit 3, Progress Ledger)"
+    required: false
+    default: "false"
+  allowed-frontier:
+    description: "Optional file listing allowed open frontier lemma names (requires frontier=true)"
+    required: false
+    default: ""
+  frontier-axioms:
+    description: "Optional pinned file listing declared project axioms admitted in frontier F (requires frontier=true; check-frontier.sh --axioms)"
+    required: false
+    default: ""
+  frontier-pinned:
+    description: "Optional pinned frontier challenge directory (requires frontier=true)"
+    required: false
+    default: ""
+  threads:
+    description: "Worker thread count (0 = auto)"
+    required: false
+    default: "0"
+  wall-limit:
+    description: "Per-step wall-clock bound in seconds enforced via tools/guard/fvguard.py (0 = disable, default 3600)"
+    required: false
+    default: "3600"
+  disk-limit:
+    description: "Optional cache-dir disk quota enforced via fvguard (e.g. 50G)"
+    required: false
+    default: ""
+  mem-limit:
+    description: "Optional memory limit enforced via fvguard (e.g. 32G)"
+    required: false
+    default: ""
+  out-dir:
+    description: "Directory for CI artifacts (result-v1.json, results.sarif, summary.md). Must be OUTSIDE the project (bin/fastverify refuses an output inside the project it judges); default: $RUNNER_TEMP/fastverify-ci-out"
+    required: false
+    default: ""
+  commit-sha:
+    description: "Git commit SHA recorded in reports (defaults to GITHUB_SHA)"
+    required: false
+    default: ""
+outputs:
+  verdict:
+    description: "Verdict string (ACCEPTED, REJECTED, CONDITIONAL, DECLINED, NO-VERDICT, ERROR)"
+    value: ${{ steps.run.outputs.verdict }}
+  accepted:
+    description: "'true' iff verdict == ACCEPTED"
+    value: ${{ steps.run.outputs.accepted }}
+  trust:
+    description: "Trust level (sound, notary, official, ...)"
+    value: ${{ steps.run.outputs.trust }}
+  exit-code:
+    description: "Exit code (0=ACCEPTED, 1=REJECTED, 2=ERROR/DECLINED, 3=CONDITIONAL)"
+    value: ${{ steps.run.outputs.exit_code }}
+  wall-seconds:
+    description: "Total CI verification wall time in seconds"
+    value: ${{ steps.run.outputs.wall_seconds }}
+  result-json:
+    description: "Path to API v1 result JSON"
+    value: ${{ steps.run.outputs.result_json }}
+  sarif-file:
+    description: "Path to SARIF 2.1.0 report"
+    value: ${{ steps.run.outputs.sarif_file }}
+  summary-markdown:
+    description: "Path to PR comment / step summary Markdown"
+    value: ${{ steps.run.outputs.summary_markdown }}
+runs:
+  using: "composite"
+  steps:
+    - name: Run fastverify sound CI gate
+      id: run
+      shell: bash
+      env:
+        FV_EXPERIMENTAL: ${{ inputs.experimental }}
+        FV_PROJECT: ${{ inputs.project }}
+        FV_CHALLENGE: ${{ inputs.challenge }}
+        FV_CHALLENGE_SHA256: ${{ inputs.challenge-sha256 }}
+        FV_COMPARATOR_SHA256: ${{ inputs.comparator-sha256 }}
+        FV_PACKAGES: ${{ inputs.packages }}
+        FV_ROOT_INPUT: ${{ inputs.fastverify-root }}
+        FV_PRESET: ${{ inputs.preset }}
+        FV_PINS: ${{ inputs.pins }}
+        FV_NO_INTEGRITY_CACHE: ${{ inputs.no-integrity-cache }}
+        FV_CACHE_DIR: ${{ inputs.cache-dir }}
+        FV_CLOSURE_ONLY: ${{ inputs.closure-only }}
+        FV_CONFIRM_REJECT: ${{ inputs.confirm-reject }}
+        FV_FRONTIER: ${{ inputs.frontier }}
+        FV_ALLOWED_FRONTIER: ${{ inputs.allowed-frontier }}
+        FV_FRONTIER_AXIOMS: ${{ inputs.frontier-axioms }}
+        FV_FRONTIER_PINNED: ${{ inputs.frontier-pinned }}
+        FV_THREADS: ${{ inputs.threads }}
+        FV_WALL_LIMIT: ${{ inputs.wall-limit }}
+        FV_DISK_LIMIT: ${{ inputs.disk-limit }}
+        FV_MEM_LIMIT: ${{ inputs.mem-limit }}
+        FV_OUT_DIR: ${{ inputs.out-dir }}
+        FV_COMMIT_SHA: ${{ inputs.commit-sha }}
+      run: |
+        set -euo pipefail
+        # (the CI gate is EXPERIMENTAL in v0.1) opt in ONLY through the `experimental` input; an
+        # FV_EXPERIMENTAL_CI inherited from the runner never opts in (fv-ci.sh then exits 2 with its message)
+        if [ "${FV_EXPERIMENTAL:-false}" != "true" ]; then   # refuse by itself, whatever fv-ci.sh does
+          echo "fastverify CI action: the CI gate is EXPERIMENTAL in fastverify v0.1: set the input experimental: \"true\" to run it (refused, exit 2)" >&2
+          exit 2
+        fi
+        export FV_EXPERIMENTAL_CI=1
+        ACTION_DIR="${{ github.action_path }}"
+        # default artifacts directory outside the checkout: with `project: .` an output directory inside
+        # the workspace lies inside the judged project, which bin/fastverify refuses (ERROR before any build)
+        FV_OUT_DIR="${FV_OUT_DIR:-${RUNNER_TEMP:-/tmp}/fastverify-ci-out}"
+        # ... and the cache: inside the project it is part of the judged tree and of every saved base (nested copies)
+        FV_CACHE_DIR="${FV_CACHE_DIR:-${RUNNER_TEMP:-/tmp}/fastverify-ci-cache}"
+        FV_ROOT="${FV_ROOT_INPUT:-$(cd "$ACTION_DIR/../.." && pwd)}"
+        ARGS=(
+          --project "$FV_PROJECT"
+          --challenge "$FV_CHALLENGE"
+          --challenge-sha256 "$FV_CHALLENGE_SHA256"
+          --preset "$FV_PRESET"
+          --cache-dir "$FV_CACHE_DIR"
+          --out-dir "$FV_OUT_DIR"
+          --fv-root "$FV_ROOT"
+        )
+        ARGS+=(--comparator-sha256 "$FV_COMPARATOR_SHA256")   # required
+        [ -n "$FV_PINS" ] && ARGS+=(--pins "$FV_PINS")
+        [ "$FV_NO_INTEGRITY_CACHE" = "true" ] && ARGS+=(--no-integrity-cache)
+        [ -n "$FV_PACKAGES" ] && ARGS+=(--packages "$FV_PACKAGES")
+        [ "$FV_CLOSURE_ONLY" = "true" ] && ARGS+=(--closure-only)
+        [ "$FV_CONFIRM_REJECT" = "true" ] && ARGS+=(--confirm-reject)
+        [ "$FV_FRONTIER" = "true" ] && ARGS+=(--frontier)
+        [ -n "$FV_ALLOWED_FRONTIER" ] && ARGS+=(--allowed-frontier "$FV_ALLOWED_FRONTIER")
+        [ -n "$FV_FRONTIER_AXIOMS" ] && ARGS+=(--frontier-axioms "$FV_FRONTIER_AXIOMS")
+        [ -n "$FV_FRONTIER_PINNED" ] && ARGS+=(--frontier-pinned "$FV_FRONTIER_PINNED")
+        [ "$FV_THREADS" != "0" ] && [ -n "$FV_THREADS" ] && ARGS+=(--threads "$FV_THREADS")
+        [ -n "$FV_WALL_LIMIT" ] && ARGS+=(--wall "$FV_WALL_LIMIT")
+        [ -n "$FV_DISK_LIMIT" ] && ARGS+=(--disk "$FV_DISK_LIMIT")
+        [ -n "$FV_MEM_LIMIT" ] && ARGS+=(--mem "$FV_MEM_LIMIT")
+        [ -n "${FV_COMMIT_SHA:-${GITHUB_SHA:-}}" ] && ARGS+=(--commit "${FV_COMMIT_SHA:-${GITHUB_SHA:-}}")
+        # with the opt-in, run through `bin/fv ci --experimental` when this installation's
+        # bin/fv has it: its publication hardening (retire-first, ERROR on every exit, signal teardown,
+        # input-overlap refusal) then covers the action too; otherwise fv-ci.sh directly (documented limitation)
+        if [ "${FV_EXPERIMENTAL:-false}" = "true" ] && [ -x "$FV_ROOT/bin/fv" ] && \
+           grep -q -- '"--experimental"' "$FV_ROOT/tools/cli/fv_cli.py" 2>/dev/null; then
+          FV_ARGS=()
+          skip=0
+          for x in "${ARGS[@]}"; do   # bin/fv ci uses its own installation: drop --fv-root VALUE
+            if [ "$skip" = 1 ]; then skip=0; continue; fi
+            if [ "$x" = --fv-root ]; then skip=1; continue; fi
+            FV_ARGS+=("$x")
+          done
+          exec "$FV_ROOT/bin/fv" ci --experimental "${FV_ARGS[@]}"
+        fi
+        "$ACTION_DIR/fv-ci.sh" "${ARGS[@]}"

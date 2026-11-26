@@ -1,0 +1,49 @@
+75a76,101
+> _ismod = {}
+> def is_module_file(m):
+>     """(finding 041): does the module's source start with the `module` keyword (Lean module system)?"""
+>     if m not in _ismod:
+>         r = False
+>         try:
+>             with open(os.path.join(SRC, mods_global[m]), encoding='utf-8', errors='replace') as f:
+>                 for line in f:
+>                     t = line.split('--', 1)[0].strip()
+>                     if not t or t.startswith('/-'): continue
+>                     r = (t == 'module' or t.startswith('module ')); break
+>         except OSError: pass
+>         _ismod[m] = r
+>     return _ismod[m]
+> mods_global = {}
+> 
+> def _pkg_name():
+>     """(finding 043): the package name Lake would put into the setup = `name` of the project's lakefile.toml"""
+>     try:
+>         for line in open(os.path.join(PROJ, 'lakefile.toml'), encoding='utf-8'):
+>             mm = re.match(r'\s*name\s*=\s*"([^"]*)"', line)
+>             if mm: return mm.group(1)
+>     except OSError: pass
+>     return None
+> PKG_NAME = _pkg_name()
+> 
+102a129
+>         mods_global.update(mods)
+149c176
+<     if CFG.get('LEAN_PATH_PRE'): env['LEAN_PATH'] = CFG['LEAN_PATH_PRE'] + ':' + env['LEAN_PATH']   # R05: node-local core lib copy first
+---
+>     if CFG.get('LEAN_PATH_PRE'): env['LEAN_PATH'] = env['LEAN_PATH'] + ':' + CFG['LEAN_PATH_PRE']   # fix 011h: core-lib copy LAST, like lake (project/packages first)
+204c231,237
+<         args = [lean_bin] + margs + extra + nat + ['-R', SRC, os.path.join(SRC, rel), '-o', olean] + \
+---
+>         # fix for finding 043: give lean the same module setup Lake gives it (package id; else every olean lacks it)
+>         setupf = os.path.join(tmpd, f'setup-{len(running)}-{time.monotonic_ns()}.json')
+>         with open(setupf, 'w') as sf:
+>             json.dump({'name': m, 'package': PKG_NAME, 'isModule': False, 'importArts': {}, 'dynlibs': [], 'plugins': [],
+>                        'options': {}}, sf)
+>         setup_args = ['--setup', setupf]
+>         args = [lean_bin] + margs + extra + nat + setup_args + ['-R', SRC, os.path.join(SRC, rel), '-o', olean] + \
+325a359,363
+>                 # fix for finding 041: a Lean `module` file writes .olean, .olean.server, .olean.private, .ir.sig, .ir
+>                 # one after another; release only when every part exists
+>                 if is_module_file(R['m']):
+>                     stem = R['olean'][:-len('.olean')]
+>                     if not all(os.path.exists(stem + x) for x in ('.olean.server', '.olean.private', '.ir.sig', '.ir')): continue

@@ -1,0 +1,10 @@
+name = "t2"
+srcDir = "src"
+defaultTargets = ["M", "Top"]
+
+[[lean_lib]]
+name = "M"
+globs = ["M.+"]
+
+[[lean_lib]]
+name = "Top"

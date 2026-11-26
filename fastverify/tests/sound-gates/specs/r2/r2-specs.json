@@ -1,0 +1,13 @@
+{
+ "K1": "theorem GlobalTheory.CompanionTheory.SiegelRed.siegelSetUnitary -> axiom with the same type",
+ "U1": "theorem Matrix.rank_le_card_height: first universe parameter removed",
+ "U2": "theorem Matrix.rank_le_card_height: universe parameters 552297,267539 swapped",
+ "R1": "inductive SignType.LE: recursor SignType.LE.rec rule 0 rhs := rule 1 rhs",
+ "R2": "inductive ContinuousAddEquiv: recursor ContinuousAddEquiv.rec K flag false -> true",
+ "I1": "inductive ContinuousAddEquiv: constructor ContinuousAddEquiv.mk numFields +1",
+ "I2": "inductive ContinuousAddEquiv: isRec flipped",
+ "D1": "theorem GlobalTheory.CompanionTheory.SiegelRed.siegelSetUnitary: declaration line duplicated",
+ "P1": "projection expr 19276443: idx 0 -> +1",
+ "L1": "const expr 19489404 (MeasureTheory.setLIntegral_const): universe args [0] -> \"us\":[1]",
+ "B1": "theorem PositivityTheory.ThKR.siegel_of_core: outermost binder of its type made implicit (expr shared with every user)"
+}

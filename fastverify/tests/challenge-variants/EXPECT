@@ -1,0 +1,14 @@
+# case official_rc official_sha16 (live official run; package run = same verdicts, exports byte-identical)
+p-en-honest 0 9154df96c0d4d5cf
+p-en-sorry 1 2dba7a551c9cdfb5
+p-do-honest 0 788c3dcdb8fa78db
+p-do-type 1 c3af579c38088c53
+p-do-sorry 1 2154f2b7841adb2e
+p-nm-honest 0 332d84c1148313b5
+p-nm-stmt 1 4871bb0edcddbce5
+p-esc-honest 0 4fd67a4b2a46405e
+p-esc-sorry 1 f2773b425706455b
+p-uni-honest 0 13b03841f4daf4c2
+p-nq-honest 0 6fd87533980588d8
+p-nq-funext 1 50eb86879b02d3c9
+p-sa-sorry 0 0fe800810a7c8c97

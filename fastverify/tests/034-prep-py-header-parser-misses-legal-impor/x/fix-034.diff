@@ -1,0 +1,19 @@
+24a25,38
+> import subprocess
+> LEAN_DEPS = os.environ.get('PREP_LEAN', os.path.expanduser('~/.elan/toolchains/leanprover--lean4---v4.33.1/bin/lean'))
+> 
+> 
+> def lean_imports(args):
+>     """fix-034 prototype: imports of each file as parsed by Lean itself (`lean --deps-json`, header only)."""
+>     dst, rels = args
+>     out = subprocess.run([LEAN_DEPS, '--deps-json'] + [os.path.join(dst, r) for r in rels], capture_output=True, text=True,
+>                          env=dict(os.environ, LEAN_PATH='/nonexistent'))
+>     res = json.loads(out.stdout)['imports']
+>     if len(res) != len(rels): raise SystemExit(f'prep: lean --deps-json returned {len(res)} results for {len(rels)} files')
+>     return [(r, [i['module'] for i in (e.get('result') or {}).get('imports', [])]) for r, e in zip(rels, res)]
+> 
+> 
+94a109,111
+>     with ProcessPoolExecutor(jobs) as ex:
+>         limps = dict(x for part in ex.map(lean_imports, [(dst, c) for c in chunks(rels, max(1, len(rels) // 500 + 1))]) for x in part)
+>     res = [(r[0], limps[rel], r[2], r[3], r[4], r[5]) for r, rel in zip(res, rels)]   # fix-034: Lean's own imports

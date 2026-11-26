@@ -1,0 +1,11 @@
+a2092978ae7a572caba577072c136e5c10e01a544fefbdf45eeef3ce3b01da3c  ./rshi/chal/Challenge.lean
+027fd9b9113cf2a9cf6377021f4547aec2f58f009391fa438a90b27013f6cb1a  ./rshi/chal/comparator.json
+2d9f7a0cd1a0cb5b0b05ccf04fa7a47b9a1cae7f72761e56726c2605fcaeb347  ./rshi/chal/lakefile.toml
+3aac669c7a910ec2389f4e4f921b605adf6ebf2d1e0c9b9cd0be4d33f3f5db71  ./rshi/chal/lean-toolchain
+411f72362e380190887989fb03b1a8bdb24f69a8980a7a8a8f27ad5647b21451  ./rshi/chal2/challenge.export
+5348aec8d2a4afd6f1562b6b6e5a95d200349715becd9f19d43d91bdb627867d  ./rshi/proj/Main.lean
+b8103c69b1c8bcb0c9fa2a5858d675d0fb3f24ce6642e32e6641fe2db7cb377b  ./rshi/proj/lakefile.toml
+3aac669c7a910ec2389f4e4f921b605adf6ebf2d1e0c9b9cd0be4d33f3f5db71  ./rshi/proj/lean-toolchain
+3f0f5cfcdcf495a8286c7234eeeef88f6688b2d1bc25e12a0b2b9fd19371b877  ./rshi/proj2/Main.lean
+b8103c69b1c8bcb0c9fa2a5858d675d0fb3f24ce6642e32e6641fe2db7cb377b  ./rshi/proj2/lakefile.toml
+3aac669c7a910ec2389f4e4f921b605adf6ebf2d1e0c9b9cd0be4d33f3f5db71  ./rshi/proj2/lean-toolchain

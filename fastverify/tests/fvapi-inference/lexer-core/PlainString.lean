@@ -1,0 +1,1 @@
+def s := "{theorem ghost}"

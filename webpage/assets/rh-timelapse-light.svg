@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="276" viewBox="0 0 800 276" role="img" aria-label="Time to a verified Riemann Hypothesis proof">
+<title>Time to a verified Riemann Hypothesis proof</title>
+<rect x="0.5" y="0.5" width="799" height="275" rx="12" fill="#fcfcfb" stroke="rgba(11,11,11,0.10)"/>
+<text x="28.0" y="36.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" font-weight="500" fill="#0b0b0b" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">Time to a verified Riemann Hypothesis proof</text>
+<text x="28.0" y="58.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#52514e" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">Build, export and judge from sources on server A (384 threads), Lean 4.33.1; linear time axis.</text>
+<line x1="270.0" y1="86.0" x2="270.0" y2="212.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="270.0" y="232.0" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#898781" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">0 h</text>
+<line x1="333.3" y1="86.0" x2="333.3" y2="212.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="333.3" y="232.0" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#898781" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">10 h</text>
+<line x1="396.7" y1="86.0" x2="396.7" y2="212.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="396.7" y="232.0" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#898781" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">20 h</text>
+<line x1="460.0" y1="86.0" x2="460.0" y2="212.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="460.0" y="232.0" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#898781" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">30 h</text>
+<line x1="523.3" y1="86.0" x2="523.3" y2="212.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="523.3" y="232.0" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#898781" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">40 h</text>
+<line x1="586.7" y1="86.0" x2="586.7" y2="212.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="586.7" y="232.0" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#898781" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">50 h</text>
+<line x1="650.0" y1="86.0" x2="650.0" y2="212.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="650.0" y="232.0" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#898781" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">60 h</text>
+<line x1="270.0" y1="86.0" x2="270.0" y2="212.0" stroke="#c3c2b7" stroke-width="1"/>
+<rect x="28" y="97" width="10" height="10" rx="2" fill="#2a78d6"/>
+<text x="44.0" y="106.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#0b0b0b" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">Light-Prover</text>
+<text x="44.0" y="122.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#898781" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">--preset sound, median of 3 runs</text>
+<path d="M270.0,99.0 H271.6 Q273.2,99.0 273.2,100.6 V107.4 Q273.2,109.0 271.6,109.0 H270.0 Z" fill="#2a78d6"><title>Light-Prover: 1,811.9 s (0.5 h)</title></path>
+<text x="281.2" y="108.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#52514e" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">1,811.9 s (0.5 h)</text>
+<rect x="28" y="141" width="10" height="10" rx="2" fill="#eb6834"/>
+<text x="44.0" y="150.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#0b0b0b" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">Official checker (b)</text>
+<text x="44.0" y="166.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#898781" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">leanchecker, one allocator setting</text>
+<path d="M270.0,143.0 H368.2 Q372.2,143.0 372.2,147.0 V149.0 Q372.2,153.0 368.2,153.0 H270.0 Z" fill="#eb6834"><title>Official checker (b): 16.1 h (32.1x longer)</title></path>
+<text x="380.2" y="152.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#52514e" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">16.1 h (32.1x longer)</text>
+<rect x="28" y="185" width="10" height="10" rx="2" fill="#eb6834"/>
+<text x="44.0" y="194.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#0b0b0b" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">Official comparator (a)</text>
+<text x="44.0" y="210.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#898781" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">lake comparator, default, shared server</text>
+<path d="M270.0,187.0 H618.6 Q622.6,187.0 622.6,191.0 V193.0 Q622.6,197.0 618.6,197.0 H270.0 Z" fill="#eb6834"><title>Official comparator (a): 55.7 h (110.6x longer)</title></path>
+<text x="630.6" y="196.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#52514e" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">55.7 h (110.6x longer)</text>
+<text x="28.0" y="258.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#898781" stroke="#fcfcfb" stroke-width="3" stroke-linejoin="round" paint-order="stroke">(b) kernel replay only, no statement or axiom check. Official build: lean per module. Source: docs/benchmarks.md</text>
+</svg>

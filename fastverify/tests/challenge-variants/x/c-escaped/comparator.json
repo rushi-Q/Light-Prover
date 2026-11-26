@@ -1,0 +1,13 @@
+{
+ "challenge_module": "Challenge",
+ "solution_module": "Solution",
+ "theorem_names": [
+  "«my thm»",
+  "Foo.«bar.baz»"
+ ],
+ "permitted_axioms": [
+  "propext",
+  "Quot.sound",
+  "Classical.choice"
+ ]
+}

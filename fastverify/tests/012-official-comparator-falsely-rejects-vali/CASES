@@ -1,0 +1,3 @@
+# 012: valid string-literal proofs; the official comparator rejects (replay order) -> fast must reject or decline
+str-leanonly | toy/str/challenge.export | toy/str/solution.export | @/rh5-leanonly.json | 1 | plain
+str-nanoda   | toy/str/challenge.export | toy/str/solution.export | @/rh5-nanoda.json   | 1 | plain

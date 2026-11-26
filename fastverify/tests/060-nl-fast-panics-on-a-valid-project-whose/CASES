@@ -1,0 +1,3 @@
+# 060: helper theorem with 65,536 universe parameters (control 65,535): official ACCEPTS both
+univ-65535 | challenge.export | solution-65535.export | comparator.json | 0 | plain
+univ-65536 | challenge.export | solution-65536.export | comparator.json | 0 | plain

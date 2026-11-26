@@ -1,0 +1,12 @@
+name = "mini"
+srcDir = "src"
+defaultTargets = ["A"]
+
+[[lean_lib]]
+name = "C"
+globs = ["Extra"]
+
+[[lean_lib]]
+name = "A"
+roots = ["Main"]
+globs = ["Main", "Extra"]

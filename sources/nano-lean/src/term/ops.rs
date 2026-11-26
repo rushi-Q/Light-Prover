@@ -1,0 +1,807 @@
+use super::ctx::Ctx;
+use super::decl::Declar;
+use super::expr::Expr;
+use super::level::Level;
+use super::ptr::{ExprPtr, LevelPtr, LevelsPtr};
+
+const OP_LIFT: u64 = 1 << 32;
+const OP_INST: u64 = 2 << 32;
+const OP_ABST: u64 = 4 << 32;
+const INST_CACHE_LIMIT: usize = 4096;
+
+impl<'t, 'a: 't> Ctx<'t, 'a> {
+    fn combine(&mut self, l: LevelPtr<'t>, r: LevelPtr<'t>) -> LevelPtr<'t> {
+        match (*l, *r) {
+            (Level::Zero, _) => r,
+            (_, Level::Zero) => l,
+            (Level::Succ(a, _), Level::Succ(b, _)) => {
+                let p = self.combine(a, b);
+                self.succ(p)
+            }
+            _ => self.max(l, r),
+        }
+    }
+
+    pub fn simplify(&mut self, l: LevelPtr<'t>) -> LevelPtr<'t> {
+        if matches!(*l, Level::Zero | Level::Param(..)) {
+            return l;
+        }
+        if let Some(&r) = self.simp_cache.get(&l) {
+            #[cfg(feature = "memocheck")]
+            assert!(
+                self.simplify_step(l) == r,
+                "memocheck: a level simplification hit disagrees"
+            );
+            return r;
+        }
+        let r = self.simplify_step(l);
+        self.simp_cache.insert(l, r);
+        r
+    }
+
+    #[inline(always)]
+    fn simplify_step(&mut self, l: LevelPtr<'t>) -> LevelPtr<'t> {
+        match *l {
+            Level::Zero | Level::Param(..) => l,
+            Level::Succ(a, _) => {
+                let a = self.simplify(a);
+                self.succ(a)
+            }
+            Level::Max(a, b, _) => {
+                let a = self.simplify(a);
+                let b = self.simplify(b);
+                self.combine(a, b)
+            }
+            Level::IMax(a, b, _) => {
+                let a = self.simplify(a);
+                let b = self.simplify(b);
+                if self.is_zero(a) || self.is_one(a) {
+                    b
+                } else {
+                    match *b {
+                        Level::Zero => b,
+                        Level::Succ(..) => self.combine(a, b),
+                        _ => self.imax(a, b),
+                    }
+                }
+            }
+        }
+    }
+
+    /// Lean 4.36 `instantiate` on levels: an unchanged node is kept as it is, a changed one is
+    /// rebuilt with the smart constructors.
+    pub fn subst_level(
+        &mut self,
+        l: LevelPtr<'t>,
+        ks: LevelsPtr<'t>,
+        vs: LevelsPtr<'t>,
+    ) -> LevelPtr<'t> {
+        match *l {
+            Level::Zero => l,
+            Level::Succ(a, _) => {
+                let a2 = self.subst_level(a, ks, vs);
+                if a2 == a { l } else { self.succ(a2) }
+            }
+            Level::Max(a, b, _) => {
+                let a2 = self.subst_level(a, ks, vs);
+                let b2 = self.subst_level(b, ks, vs);
+                if a2 == a && b2 == b { l } else { self.max(a2, b2) }
+            }
+            Level::IMax(a, b, _) => {
+                let a2 = self.subst_level(a, ks, vs);
+                let b2 = self.subst_level(b, ks, vs);
+                if a2 == a && b2 == b { l } else { self.imax(a2, b2) }
+            }
+            Level::Param(..) => ks.iter().position(|k| *k == l).map_or(l, |i| vs[i]),
+        }
+    }
+
+    pub fn subst_levels(
+        &mut self,
+        ls: LevelsPtr<'t>,
+        ks: LevelsPtr<'t>,
+        vs: LevelsPtr<'t>,
+    ) -> LevelsPtr<'t> {
+        if ks.is_empty() || ks == vs {
+            return ls;
+        }
+        let out: Vec<_> = ls.iter().map(|&l| self.subst_level(l, ks, vs)).collect();
+        self.levels(&out)
+    }
+
+    fn leq_cases(
+        &mut self,
+        p: LevelPtr<'t>,
+        l: LevelPtr<'t>,
+        r: LevelPtr<'t>,
+        diff: i32,
+    ) -> Option<bool> {
+        let zero = self.zero();
+        let sp = self.succ(p);
+        let (ps, zs, ss) = (self.levels(&[p]), self.levels(&[zero]), self.levels(&[sp]));
+        let l0 = self.subst_level(l, ps, zs);
+        let r0 = self.subst_level(r, ps, zs);
+        let (l0, r0) = (self.simplify(l0), self.simplify(r0));
+        if !self.leq_core(l0, r0, diff)? {
+            return Some(false);
+        }
+        let l1 = self.subst_level(l, ps, ss);
+        let r1 = self.subst_level(r, ps, ss);
+        let (l1, r1) = (self.simplify(l1), self.simplify(r1));
+        self.leq_core(l1, r1, diff)
+    }
+
+    /// `None` when the comparison reaches a form normalization should have removed.
+    fn leq_core(&mut self, l: LevelPtr<'t>, r: LevelPtr<'t>, diff: i32) -> Option<bool> {
+        Some(match (*l, *r) {
+            (Level::Zero, _) if diff >= 0 => true,
+            (_, Level::Zero) if diff < 0 => false,
+            (Level::Param(a, _), Level::Param(b, _)) => a == b && diff >= 0,
+            (Level::Param(..), Level::Zero) => false,
+            (Level::Zero, Level::Param(..)) => diff >= 0,
+            (Level::Succ(a, _), _) => self.leq_core(a, r, diff - 1)?,
+            (_, Level::Succ(b, _)) => self.leq_core(l, b, diff + 1)?,
+            (Level::Max(a, b, _), _) => self.leq_core(a, r, diff)? && self.leq_core(b, r, diff)?,
+            (Level::Param(..) | Level::Zero, Level::Max(a, b, _)) => {
+                self.leq_core(l, a, diff)? || self.leq_core(l, b, diff)?
+            }
+            (Level::IMax(a, b, _), Level::IMax(x, y, _)) if a == x && b == y && diff >= 0 => true,
+            (Level::IMax(_, b, _), _) if b.is_param() => self.leq_cases(b, l, r, diff)?,
+            (_, Level::IMax(_, y, _)) if y.is_param() => self.leq_cases(y, l, r, diff)?,
+            (Level::IMax(a, b, _), _) if b.is_any_max() => {
+                let d = self.distribute_imax(a, b);
+                self.leq_core(d, r, diff)?
+            }
+            (_, Level::IMax(x, y, _)) if y.is_any_max() => {
+                let d = self.distribute_imax(x, y);
+                self.leq_core(l, d, diff)?
+            }
+            _ => return None,
+        })
+    }
+
+    fn distribute_imax(&mut self, a: LevelPtr<'t>, b: LevelPtr<'t>) -> LevelPtr<'t> {
+        match *b {
+            Level::IMax(x, y, _) => {
+                let l = self.imax(a, y);
+                let r = self.imax(x, y);
+                self.max(l, r)
+            }
+            Level::Max(x, y, _) => {
+                let l = self.imax(a, x);
+                let r = self.imax(a, y);
+                let m = self.max(l, r);
+                self.simplify(m)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// Lean 4.36 `is_geq(r, l)`: `l <= r` as its kernel decides it, by normalization and a
+    /// structural comparison, which is sound but not complete (K07: 4.36 conformance).
+    pub fn try_leq(&mut self, l: LevelPtr<'t>, r: LevelPtr<'t>) -> Option<bool> {
+        if l == r {
+            return Some(true);
+        }
+        Some(self.is_geq(r, l))
+    }
+
+    /// Lean 4.36 `is_equivalent`.
+    pub fn try_level_eq(&mut self, l: LevelPtr<'t>, r: LevelPtr<'t>) -> Option<bool> {
+        Some(l == r || self.normalize(l) == self.normalize(r))
+    }
+
+    pub fn try_levels_eq(&mut self, xs: LevelsPtr<'t>, ys: LevelsPtr<'t>) -> Option<bool> {
+        if xs == ys {
+            return Some(true);
+        }
+        if xs.len() != ys.len() {
+            return Some(false);
+        }
+        for (&x, &y) in xs.iter().zip(ys.iter()) {
+            if !self.try_level_eq(x, y)? {
+                return Some(false);
+            }
+        }
+        Some(true)
+    }
+
+    fn mk_succ_k(&mut self, mut l: LevelPtr<'t>, k: u32) -> LevelPtr<'t> {
+        for _ in 0..k {
+            l = self.succ(l);
+        }
+        l
+    }
+
+    /// Lean 4.36 `normalize`.
+    pub fn normalize(&mut self, l: LevelPtr<'t>) -> LevelPtr<'t> {
+        let (r, k) = super::ctx::to_offset(l);
+        match *r {
+            Level::Succ(..) => unreachable!("to_offset strips successors"),
+            Level::Zero | Level::Param(..) => l,
+            Level::IMax(a, b, _) => {
+                let a = self.normalize(a);
+                let b = self.normalize(b);
+                let m = self.imax(a, b);
+                self.mk_succ_k(m, k)
+            }
+            Level::Max(..) => {
+                let mut todo = Vec::new();
+                push_max_args(r, &mut todo);
+                let mut args = Vec::new();
+                for a in todo {
+                    let n = self.normalize(a);
+                    push_max_args(n, &mut args);
+                }
+                args.sort_by(|a, b| {
+                    if is_norm_lt(*a, *b) {
+                        std::cmp::Ordering::Less
+                    } else if is_norm_lt(*b, *a) {
+                        std::cmp::Ordering::Greater
+                    } else {
+                        std::cmp::Ordering::Equal
+                    }
+                });
+                let mut rargs: Vec<LevelPtr<'t>> = Vec::new();
+                let mut i = 0;
+                if super::ctx::explicit_depth(args[i]).is_some() {
+                    while i + 1 < args.len() && super::ctx::explicit_depth(args[i + 1]).is_some() {
+                        i += 1;
+                    }
+                    let kk = super::ctx::to_offset(args[i]).1;
+                    let mut j = i + 1;
+                    while j < args.len() {
+                        if super::ctx::to_offset(args[j]).1 >= kk {
+                            break;
+                        }
+                        j += 1;
+                    }
+                    if j < args.len() {
+                        i += 1;
+                    }
+                }
+                rargs.push(args[i]);
+                let mut prev = super::ctx::to_offset(args[i]);
+                i += 1;
+                while i < args.len() {
+                    let curr = super::ctx::to_offset(args[i]);
+                    if prev.0 == curr.0 {
+                        if prev.1 < curr.1 {
+                            prev = curr;
+                            rargs.pop();
+                            rargs.push(args[i]);
+                        }
+                    } else {
+                        prev = curr;
+                        rargs.push(args[i]);
+                    }
+                    i += 1;
+                }
+                for a in &mut rargs {
+                    *a = self.mk_succ_k(*a, k);
+                }
+                self.mk_max_list(&rargs)
+            }
+        }
+    }
+
+    fn mk_max_list(&mut self, args: &[LevelPtr<'t>]) -> LevelPtr<'t> {
+        let n = args.len();
+        if n == 1 {
+            return args[0];
+        }
+        let mut r = self.max(args[n - 2], args[n - 1]);
+        let mut i = n - 2;
+        while i > 0 {
+            i -= 1;
+            r = self.max(args[i], r);
+        }
+        r
+    }
+
+    fn is_geq_core(&mut self, l1: LevelPtr<'t>, l2: LevelPtr<'t>) -> bool {
+        if l1 == l2 || matches!(*l2, Level::Zero) {
+            return true;
+        }
+        if let Level::Max(a, b, _) = *l2 {
+            return self.is_geq(l1, a) && self.is_geq(l1, b);
+        }
+        if let Level::Max(a, b, _) = *l1
+            && (self.is_geq(a, l2) || self.is_geq(b, l2))
+        {
+            return true;
+        }
+        if let Level::IMax(a, b, _) = *l2 {
+            return self.is_geq(l1, a) && self.is_geq(l1, b);
+        }
+        if let Level::IMax(_, b, _) = *l1 {
+            return self.is_geq(b, l2);
+        }
+        let (b1, k1) = super::ctx::to_offset(l1);
+        let (b2, k2) = super::ctx::to_offset(l2);
+        if b1 == b2 || matches!(*b2, Level::Zero) {
+            return k1 >= k2;
+        }
+        if k1 == k2 && k1 > 0 {
+            return self.is_geq(b1, b2);
+        }
+        false
+    }
+
+    /// Lean 4.36 `is_geq`.
+    pub fn is_geq(&mut self, l1: LevelPtr<'t>, l2: LevelPtr<'t>) -> bool {
+        let a = self.normalize(l1);
+        let b = self.normalize(l2);
+        self.is_geq_core(a, b)
+    }
+
+    /// Inconclusive counts as not zero, which only leaves `imax` less simplified.
+    fn is_zero(&mut self, l: LevelPtr<'t>) -> bool {
+        super::ctx::normalizes_to_zero(l)
+    }
+
+    fn is_one(&mut self, l: LevelPtr<'t>) -> bool {
+        matches!(*l, Level::Succ(p, _) if self.is_zero(p))
+    }
+
+    fn fresh(&mut self) -> u32 {
+        self.generation = self.generation.wrapping_add(1);
+        if self.generation == 0 {
+            self.memo.clear();
+            self.generation = 1;
+        }
+        self.generation
+    }
+
+    #[inline]
+    fn memo_get(&self, key: (ExprPtr<'t>, u64), g: u32) -> Option<ExprPtr<'t>> {
+        match self.memo.get(&key) {
+            Some(&(k, r)) if k == g => Some(r),
+            _ => None,
+        }
+    }
+
+    #[inline(always)]
+    fn map_children(
+        &mut self,
+        e: ExprPtr<'t>,
+        mut f: impl FnMut(&mut Self, ExprPtr<'t>, u16) -> ExprPtr<'t>,
+    ) -> ExprPtr<'t> {
+        match *e {
+            Expr::App { fun, arg, .. } => {
+                let fun = f(self, fun, 0);
+                let arg = f(self, arg, 0);
+                self.app(fun, arg)
+            }
+            Expr::Lam { ty, body, .. } => {
+                let t = f(self, ty, 0);
+                let b = f(self, body, 1);
+                self.lam(t, b)
+            }
+            Expr::Pi { ty, body, .. } => {
+                let t = f(self, ty, 0);
+                let b = f(self, body, 1);
+                self.pi(t, b)
+            }
+            Expr::Let { data, .. } => {
+                let t = f(self, data.ty, 0);
+                let v = f(self, data.val, 0);
+                let b = f(self, data.body, 1);
+                self.let_(t, v, b, data.nondep)
+            }
+            Expr::Proj {
+                name, idx, e: s, ..
+            } => {
+                let s = f(self, s, 0);
+                self.proj(name, idx, s)
+            }
+            _ => e,
+        }
+    }
+
+    fn lift_rec(&mut self, e: ExprPtr<'t>, cutoff: u16, amount: u16, g: u32) -> ExprPtr<'t> {
+        if amount == 0 || e.nlb() <= cutoff {
+            return e;
+        }
+        let key = (e, OP_LIFT | u64::from(amount) << 16 | u64::from(cutoff));
+        if let Some(r) = self.memo_get(key, g) {
+            return r;
+        }
+        let r = match *e {
+            Expr::Var { idx, .. } => match idx.checked_add(amount) {
+                Some(i) => self.var(i),
+                None => {
+                    self.overflow = true;
+                    e
+                }
+            },
+            _ => self.map_children(e, |c, x, d| c.lift_rec(x, cutoff + d, amount, g)),
+        };
+        self.memo.insert(key, (g, r));
+        r
+    }
+
+    /// `None` when a lifted variable index would overflow.
+    pub fn inst(&mut self, e: ExprPtr<'t>, subs: &[ExprPtr<'t>]) -> Option<ExprPtr<'t>> {
+        if subs.is_empty() || e.closed() {
+            return Some(e);
+        }
+        // Sound because a closed replacement needs no lifting and pointers capture all inputs.
+        let key = match subs {
+            [s] if s.closed() => Some((e, *s)),
+            _ => None,
+        };
+        if let Some(key) = key
+            && let Some(&result) = self.inst_cache.get(&key)
+        {
+            #[cfg(feature = "memocheck")]
+            {
+                let g = self.fresh();
+                let r = self.inst_rec(e, subs, 0, g);
+                assert!(
+                    !std::mem::take(&mut self.overflow) && r == result,
+                    "memocheck: an instantiation hit disagrees"
+                );
+            }
+            return Some(result);
+        }
+        let g = self.fresh();
+        let result = self.inst_rec(e, subs, 0, g);
+        if std::mem::take(&mut self.overflow) {
+            return None;
+        }
+        if let Some(key) = key {
+            if self.inst_cache.len() == INST_CACHE_LIMIT {
+                self.inst_cache.clear();
+            }
+            self.inst_cache.insert(key, result);
+        }
+        Some(result)
+    }
+
+    pub fn inst1(&mut self, e: ExprPtr<'t>, s: ExprPtr<'t>) -> Option<ExprPtr<'t>> {
+        self.inst(e, &[s])
+    }
+
+    fn inst_rec(&mut self, e: ExprPtr<'t>, subs: &[ExprPtr<'t>], off: u16, g: u32) -> ExprPtr<'t> {
+        if e.nlb() <= off {
+            return e;
+        }
+        let key = (e, OP_INST | u64::from(off));
+        if let Some(r) = self.memo_get(key, g) {
+            return r;
+        }
+        let r = match *e {
+            Expr::Var { idx, .. } => {
+                let i = usize::from(idx - off);
+                if i < subs.len() {
+                    self.lift_rec(subs[subs.len() - 1 - i], 0, off, g)
+                } else {
+                    self.var(idx - subs.len() as u16)
+                }
+            }
+            _ => self.map_children(e, |c, x, d| c.inst_rec(x, subs, off + d, g)),
+        };
+        self.memo.insert(key, (g, r));
+        r
+    }
+
+    pub fn abstract_locals(&mut self, e: ExprPtr<'t>, locals: &[ExprPtr<'t>]) -> ExprPtr<'t> {
+        if locals.is_empty() || !e.has_local() {
+            return e;
+        }
+        let g = self.fresh();
+        self.abst_rec(e, locals, 0, g)
+    }
+
+    fn abst_rec(
+        &mut self,
+        e: ExprPtr<'t>,
+        locals: &[ExprPtr<'t>],
+        off: u16,
+        g: u32,
+    ) -> ExprPtr<'t> {
+        if !e.has_local() {
+            return e;
+        }
+        let key = (e, OP_ABST | u64::from(off));
+        if let Some(r) = self.memo_get(key, g) {
+            return r;
+        }
+        let r = match *e {
+            Expr::Local { .. } => match locals.iter().rposition(|&l| l == e) {
+                Some(i) => self.var(off + (locals.len() - 1 - i) as u16),
+                None => e,
+            },
+            _ => self.map_children(e, |c, x, d| c.abst_rec(x, locals, off + d, g)),
+        };
+        self.memo.insert(key, (g, r));
+        r
+    }
+
+    pub fn subst_expr_levels(
+        &mut self,
+        e: ExprPtr<'t>,
+        ks: LevelsPtr<'t>,
+        vs: LevelsPtr<'t>,
+    ) -> ExprPtr<'t> {
+        if ks.is_empty() || ks == vs {
+            return e;
+        }
+        if matches!(
+            *e,
+            Expr::Var { .. } | Expr::NatLit { .. } | Expr::StrLit { .. }
+        ) {
+            return e;
+        }
+        if let Some(&r) = self.subst_cache.get(&(e, ks, vs)) {
+            #[cfg(feature = "memocheck")]
+            assert!(
+                self.subst_step(e, ks, vs) == r,
+                "memocheck: a level substitution hit disagrees"
+            );
+            return r;
+        }
+        let r = self.subst_step(e, ks, vs);
+        self.subst_cache.insert((e, ks, vs), r);
+        r
+    }
+
+    #[inline(always)]
+    fn subst_step(&mut self, e: ExprPtr<'t>, ks: LevelsPtr<'t>, vs: LevelsPtr<'t>) -> ExprPtr<'t> {
+        match *e {
+            Expr::Sort { level, .. } => {
+                let l = self.subst_level(level, ks, vs);
+                self.sort(l)
+            }
+            Expr::Const { name, levels, .. } => {
+                let ls = self.subst_levels(levels, ks, vs);
+                self.konst(name, ls)
+            }
+            _ => self.map_children(e, |c, x, _| c.subst_expr_levels(x, ks, vs)),
+        }
+    }
+
+    pub fn unfold_apps(&self, mut e: ExprPtr<'t>) -> (ExprPtr<'t>, Vec<ExprPtr<'t>>) {
+        let mut args = Vec::with_capacity(e.num_args());
+        while let Expr::App { fun, arg, .. } = *e {
+            args.push(arg);
+            e = fun;
+        }
+        args.reverse();
+        (e, args)
+    }
+
+    pub fn declar_type(&mut self, d: &Declar<'t>, levels: LevelsPtr<'t>) -> ExprPtr<'t> {
+        self.subst_expr_levels(d.ty(), d.uparams(), levels)
+    }
+}
+
+pub(crate) const LEVEL_FORM: &str = "universe comparison reached an unexpected form";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::import::import_bytes;
+    use crate::term::arena::Arena;
+
+    #[test]
+    fn cached_instantiation_matches_traversal_across_binders_and_arguments() {
+        let imported = Arena::new();
+        let store = import_bytes(
+            &imported,
+            include_bytes!("../../tests/fixtures/foundations.ndjson"),
+        )
+        .unwrap();
+        let arena = Arena::new();
+        let mut ctx = Ctx::new(&store, &arena);
+        let prop = ctx.prop();
+        let v0 = ctx.var(0);
+        let v1 = ctx.var(1);
+        let v2 = ctx.var(2);
+        let app = ctx.app(v0, v1);
+        let lam = ctx.lam(prop, app);
+        let pi = ctx.pi(v0, lam);
+        let let_ = ctx.let_(prop, v1, pi, false);
+        let proj = ctx.proj(ctx.anon(), 0, let_);
+        let local = ctx.local(0, prop);
+        let other_local = ctx.local(1, prop);
+        for expression in [v0, v1, v2, app, lam, pi, let_, proj] {
+            for substitutions in [
+                vec![prop],
+                vec![local],
+                vec![other_local],
+                vec![v1],
+                vec![prop, local],
+            ] {
+                let expected = reference_inst(&mut ctx, expression, &substitutions, 0);
+                assert_eq!(ctx.inst(expression, &substitutions), Some(expected));
+                ctx.inst(expression, &[other_local, prop]);
+                assert_eq!(ctx.inst(expression, &substitutions), Some(expected));
+            }
+        }
+        let body = ctx.app(v0, v1);
+        let abstraction = ctx.lam(prop, body);
+        let expected_body = ctx.app(v0, v2);
+        let expected = ctx.lam(prop, expected_body);
+        assert_eq!(ctx.inst1(abstraction, v1), Some(expected));
+    }
+
+    fn reference_lift<'t>(
+        ctx: &mut Ctx<'t, '_>,
+        e: ExprPtr<'t>,
+        cutoff: u16,
+        amount: u16,
+    ) -> ExprPtr<'t> {
+        match *e {
+            Expr::Var { idx, .. } if idx >= cutoff => ctx.var(idx + amount),
+            Expr::Var { .. } => e,
+            _ => ctx.map_children(e, |c, x, d| reference_lift(c, x, cutoff + d, amount)),
+        }
+    }
+
+    fn reference_inst<'t>(
+        ctx: &mut Ctx<'t, '_>,
+        e: ExprPtr<'t>,
+        subs: &[ExprPtr<'t>],
+        off: u16,
+    ) -> ExprPtr<'t> {
+        match *e {
+            Expr::Var { idx, .. } if idx < off => e,
+            Expr::Var { idx, .. } => match subs.len().checked_sub(1 + usize::from(idx - off)) {
+                Some(i) => reference_lift(ctx, subs[i], 0, off),
+                None => ctx.var(idx - subs.len() as u16),
+            },
+            _ => ctx.map_children(e, |c, x, d| reference_inst(c, x, subs, off + d)),
+        }
+    }
+
+    #[test]
+    fn open_substitution_lifts_by_each_binder_depth() {
+        let imported = Arena::new();
+        let store = import_bytes(
+            &imported,
+            include_bytes!("../../tests/fixtures/foundations.ndjson"),
+        )
+        .unwrap();
+        let arena = Arena::new();
+        let mut ctx = Ctx::new(&store, &arena);
+        let prop = ctx.prop();
+        let (v1, v2, v5, v6, v7) = (ctx.var(1), ctx.var(2), ctx.var(5), ctx.var(6), ctx.var(7));
+        let inner = ctx.lam(prop, v2);
+        let body = ctx.app(v1, inner);
+        let e = ctx.lam(prop, body);
+        let inner = ctx.lam(prop, v7);
+        let body = ctx.app(v6, inner);
+        let expected = ctx.lam(prop, body);
+        assert_eq!(ctx.inst(e, &[v5]), Some(expected));
+    }
+
+    #[test]
+    fn substitution_cache_is_bounded_and_dropped_before_arena_reset() {
+        let imported = Arena::new();
+        let store = import_bytes(
+            &imported,
+            include_bytes!("../../tests/fixtures/foundations.ndjson"),
+        )
+        .unwrap();
+        let mut arena = Arena::new();
+        for round in 0..2 {
+            let mut ctx = Ctx::new(&store, &arena);
+            assert!(ctx.inst_cache.is_empty());
+            let prop = ctx.prop();
+            let var = ctx.var(0);
+            for id in 0..5000 {
+                let local = ctx.local(id + round * 5000, prop);
+                assert_eq!(ctx.inst1(var, local), Some(local));
+                assert!(ctx.inst_cache.len() <= INST_CACHE_LIMIT);
+            }
+            // Lifting this variable must hit checked arithmetic in release builds too.
+            let near_limit = ExprPtr::new(
+                arena.alloc(Expr::Var {
+                    idx: u16::MAX,
+                    hash: 0,
+                }),
+                1,
+            );
+            let mut nested = ctx.var(3);
+            for _ in 0..3 {
+                nested = ctx.lam(prop, nested);
+            }
+            let before = ctx.inst_cache.len();
+            assert!(ctx.inst1(nested, near_limit).is_none());
+            assert!(!ctx.overflow);
+            assert_eq!(ctx.inst_cache.len(), before);
+            assert_eq!(ctx.inst1(var, prop), Some(prop));
+            drop(ctx);
+            arena.reset();
+        }
+    }
+}
+
+
+fn push_max_args<'t>(l: LevelPtr<'t>, out: &mut Vec<LevelPtr<'t>>) {
+    if let Level::Max(a, b, _) = *l {
+        push_max_args(a, out);
+        push_max_args(b, out);
+    } else {
+        out.push(l);
+    }
+}
+
+fn kind_rank(l: LevelPtr<'_>) -> u8 {
+    match *l {
+        Level::Zero => 0,
+        Level::Succ(..) => 1,
+        Level::Max(..) => 2,
+        Level::IMax(..) => 3,
+        Level::Param(..) => 4,
+    }
+}
+
+/// Lean 4.36 name order (`name::cmp_core`): component-wise from the root, a numeric component before a
+/// string one, strings bytewise, a proper prefix first. `normalize` leaves `mk_imax` results unsorted, so
+/// whether two levels compare equal can depend on this order.
+fn name_lt(a: crate::term::ptr::NamePtr<'_>, b: crate::term::ptr::NamePtr<'_>) -> bool {
+    use crate::term::name::Name;
+    fn limbs<'n>(mut n: crate::term::ptr::NamePtr<'n>, out: &mut Vec<crate::term::ptr::NamePtr<'n>>) {
+        loop {
+            match n.kind {
+                Name::Anon => break,
+                Name::Str(p, ..) | Name::Num(p, ..) => {
+                    out.push(n);
+                    n = p;
+                }
+            }
+        }
+        out.reverse();
+    }
+    let (mut x, mut y) = (Vec::new(), Vec::new());
+    limbs(a, &mut x);
+    limbs(b, &mut y);
+    for (p, q) in x.iter().zip(&y) {
+        match (p.kind, q.kind) {
+            (Name::Str(_, s, _), Name::Str(_, t, _)) => {
+                if s.s.as_bytes() != t.s.as_bytes() {
+                    return s.s.as_bytes() < t.s.as_bytes();
+                }
+            }
+            (Name::Num(_, i, _), Name::Num(_, j, _)) => {
+                if i != j {
+                    return i < j;
+                }
+            }
+            (Name::Num(..), Name::Str(..)) => return true,
+            (Name::Str(..), Name::Num(..)) => return false,
+            _ => {}
+        }
+    }
+    x.len() < y.len()
+}
+
+/// Lean 4.36 `is_norm_lt`.
+fn is_norm_lt(a: LevelPtr<'_>, b: LevelPtr<'_>) -> bool {
+    if a == b {
+        return false;
+    }
+    let (l1, k1) = super::ctx::to_offset(a);
+    let (l2, k2) = super::ctx::to_offset(b);
+    if l1 != l2 {
+        if kind_rank(l1) != kind_rank(l2) {
+            return kind_rank(l1) < kind_rank(l2);
+        }
+        return match (*l1, *l2) {
+            (Level::Param(n, _), Level::Param(m, _)) => name_lt(n, m),
+            (Level::Max(a1, b1, _), Level::Max(a2, b2, _))
+            | (Level::IMax(a1, b1, _), Level::IMax(a2, b2, _)) => {
+                if a1 != a2 {
+                    is_norm_lt(a1, a2)
+                } else {
+                    is_norm_lt(b1, b2)
+                }
+            }
+            _ => false,
+        };
+    }
+    k1 < k2
+}

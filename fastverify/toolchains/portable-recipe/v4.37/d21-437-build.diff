@@ -1,0 +1,85 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index a086225..bcd9e23 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -209,6 +209,37 @@ string(APPEND LEANC_EXTRA_CC_FLAGS " -fstack-clash-protection")
+ string(APPEND LEANC_EXTRA_CC_FLAGS " -ffp-contract=off")
+ string(APPEND LEAN_EXTRA_CXX_FLAGS " -ffp-contract=off")
+ 
++# (port of team T 3a67a908e0 + 79a71f74e0 to 4.37) Profile-guided optimization of the toolchain itself (clang only; inlining /
++# code layout only, no semantic change). Clang FRONTEND instrumentation (function hashes from the AST). LEAN_PGO_GENERATE=ON:
++# instrumented toolchain (raw profiles to $LLVM_PROFILE_FILE); LEAN_PGO_USE=<merged .profdata> (default: <repo>/pgo/lean.profdata
++# if present) optimizes the runtime, kernel and the stdlib C code. Never embedded in `leanc`: user code is unaffected.
++option(LEAN_PGO_GENERATE "Build a PGO-instrumented toolchain" OFF)
++if(NOT DEFINED LEAN_PGO_USE)
++  set(LEAN_PGO_USE "")
++  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../pgo/lean.profdata")
++    set(LEAN_PGO_USE "${CMAKE_CURRENT_SOURCE_DIR}/../pgo/lean.profdata")
++  endif()
++endif()
++set(LEAN_PGO_FLAGS "")
++set(LEAN_PGO_LINK_FLAGS "")
++if(NOT (STAGE EQUAL 0) AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_SYSTEM_NAME MATCHES "Windows|Emscripten")
++  if(LEAN_PGO_GENERATE)
++    set(LEAN_PGO_FLAGS "-fprofile-instr-generate")
++    string(APPEND CMAKE_EXE_LINKER_FLAGS " -fprofile-instr-generate")
++    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -fprofile-instr-generate")
++  elseif(LEAN_PGO_USE)
++    file(MD5 "${LEAN_PGO_USE}" LEAN_PGO_HASH)
++    message(STATUS "PGO: using profile ${LEAN_PGO_USE} (md5 ${LEAN_PGO_HASH})")
++    set(LEAN_PGO_FLAGS "-fprofile-instr-use=${LEAN_PGO_USE} -DLEAN_PGO_PROFILE_MD5=${LEAN_PGO_HASH} -Wno-error=profile-instr-out-of-date -Wno-profile-instr-unprofiled -Wno-profile-instr-missing")
++    if(LEAN_EXTRA_LINKER_FLAGS MATCHES "-fuse-ld=lld")
++      set(LEAN_PGO_LINK_FLAGS "-Wl,-z,keep-text-section-prefix")
++      string(APPEND CMAKE_EXE_LINKER_FLAGS " ${LEAN_PGO_LINK_FLAGS}")
++      string(APPEND CMAKE_SHARED_LINKER_FLAGS " ${LEAN_PGO_LINK_FLAGS}")
++    endif()
++  endif()
++  string(APPEND LEAN_EXTRA_CXX_FLAGS " ${LEAN_PGO_FLAGS}")
++endif()
++
+ # On Windows we want to disable writing COFF object file time stamps.
+ # LLVM 23 seems to have a regression in this regard.
+ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
+@@ -726,6 +757,7 @@ file(WRITE "${CMAKE_BINARY_DIR}/lake-githash" "${LAKE_LEAN_GITHASH}")
+ if(USE_GITHASH)
+   include(GetGitRevisionDescription)
+   get_git_head_revision(GIT_REFSPEC GIT_SHA1 ALLOW_LOOKING_ABOVE_CMAKE_SOURCE_DIR)
++  set(GIT_SHA1 "0b77e12952ad39077d80d8bd6b66d601f225c321")  # D21: pinned to the official v4.37.0-rc1 commit (Mathlib cache oleans)
+   if(GIT_SHA1 MATCHES "GITDIR-NOTFOUND")
+     message(STATUS "Failed to read git_sha1")
+     set(GIT_SHA1 "")
+@@ -787,6 +819,25 @@ string(APPEND LEANC_OPTS " -I${CMAKE_BINARY_DIR}/include")
+ # Use CMake profile C++ flags for building Lean libraries, but do not embed in `leanc`
+ string(TOUPPER "${CMAKE_BUILD_TYPE}" uppercase_CMAKE_BUILD_TYPE)
+ string(APPEND LEANC_OPTS " ${CMAKE_CXX_FLAGS_${uppercase_CMAKE_BUILD_TYPE}}")
++# PGO flags (see above) for the links of the stdlib, likewise not embedded in `leanc`
++string(APPEND LEANC_OPTS " ${LEAN_PGO_FLAGS} ${LEAN_PGO_LINK_FLAGS}")
++# (port of team T a3228bc450 + 7f813460db) internal-only codegen flags for the toolchain itself (C/C++ runtime and kernel,
++# Lake-compiled stdlib C, toolchain links); ThinLTO by default with clang + lld on Linux. Never embedded in `leanc`/`lake`.
++set(LEAN_TOOLCHAIN_CODEGEN_FLAGS "" CACHE STRING "Additional internal compiler/linker flags for building the toolchain (not embedded in leanc)")
++set(LEAN_LTO_DEFAULT OFF)
++if(NOT (STAGE EQUAL 0) AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"
++   AND CMAKE_SYSTEM_NAME MATCHES "Linux" AND LEAN_EXTRA_LINKER_FLAGS MATCHES "-fuse-ld=lld")
++  set(LEAN_LTO_DEFAULT ON)
++endif()
++option(LEAN_LTO "Build the toolchain itself with ThinLTO (not embedded in leanc)" ${LEAN_LTO_DEFAULT})
++if(LEAN_LTO)
++  string(APPEND LEAN_TOOLCHAIN_CODEGEN_FLAGS " -flto=thin")
++endif()
++if(LEAN_TOOLCHAIN_CODEGEN_FLAGS)
++  string(APPEND CMAKE_CXX_FLAGS " ${LEAN_TOOLCHAIN_CODEGEN_FLAGS}")
++  string(APPEND CMAKE_C_FLAGS " ${LEAN_TOOLCHAIN_CODEGEN_FLAGS}")
++  string(APPEND LEANC_OPTS " ${LEAN_TOOLCHAIN_CODEGEN_FLAGS}")
++endif()
+ 
+ # Do embed flag for finding system headers and libraries in dev builds
+ if(CMAKE_OSX_SYSROOT AND NOT LEAN_STANDALONE)
+@@ -1315,7 +1366,7 @@ string(REPLACE "ROOT" "${CMAKE_BINARY_DIR}" LEANC_CC "${LEANC_CC}")
+ string(REPLACE "ROOT" "${CMAKE_BINARY_DIR}" LEANC_INTERNAL_FLAGS "${LEANC_INTERNAL_FLAGS}")
+ 
+ toml_escape("${LEAN_EXTRA_OPTS}" LEAN_EXTRA_OPTS_TOML)
+-toml_escape("${LEANC_EXTRA_CC_FLAGS}" LEAN_MORE_LEANC_ARGS_TOML)
++toml_escape("${LEANC_EXTRA_CC_FLAGS} ${LEAN_TOOLCHAIN_CODEGEN_FLAGS} ${LEAN_PGO_FLAGS}" LEAN_MORE_LEANC_ARGS_TOML)
+ # These are passed as untraced arguments because they include the sysroot path.
+ # However, as they are untraced, Lake will not invalidate build artifacts if the sysroot changes.
+ # As such, care must be taken when changing sysroots. Locally, artifacts can be manually cleaned via

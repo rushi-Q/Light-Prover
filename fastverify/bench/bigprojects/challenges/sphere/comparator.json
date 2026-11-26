@@ -1,0 +1,13 @@
+{
+ "challenge_module": "Challenge",
+ "solution_module": "SphereEversion",
+ "theorem_names": [
+  "Smale"
+ ],
+ "definition_names": [],
+ "permitted_axioms": [
+  "propext",
+  "Quot.sound",
+  "Classical.choice"
+ ]
+}

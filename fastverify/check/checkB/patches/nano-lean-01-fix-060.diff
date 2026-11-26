@@ -1,0 +1,46 @@
+--- a/vendor/nano-lean/src/term/ptr.rs
++++ b/vendor/nano-lean/src/term/ptr.rs
+@@ -148,6 +148,13 @@
+     }
+ }
+ 
++/// X08 fix-060: length tag meaning "look the length up in `long_levels()`".
++const LONG_LEVELS_TAG: u64 = 0xFFFF;
++fn long_levels() -> &'static std::sync::Mutex<std::collections::HashMap<u64, usize>> {
++    static T: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<u64, usize>>> = std::sync::OnceLock::new();
++    T.get_or_init(Default::default)
++}
++
+ /// Thin pointer to an interned slice of levels, length packed in the top 16 bits.
+ #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+ pub struct LevelsPtr<'a>(u64, PhantomData<&'a [LevelPtr<'a>]>);
+@@ -155,15 +162,26 @@
+ impl<'a> LevelsPtr<'a> {
+     #[inline]
+     pub fn new(s: &'a [LevelPtr<'a>]) -> Self {
+-        assert!(s.len() <= usize::from(u16::MAX), "too many universe levels");
+         let addr = s.as_ptr() as u64;
+         assert!(addr & !ADDR == 0, "address wider than 48 bits");
+-        Self(addr | ((s.len() as u64) << META_SHIFT), PhantomData)
++        if (s.len() as u64) < LONG_LEVELS_TAG {
++            Self(addr | ((s.len() as u64) << META_SHIFT), PhantomData)
++        } else {
++            // X08 fix-060: the Lean kernel has no bound on the length of a universe list; lists of 65,535 or more
++            // levels keep their length in a side table keyed by the (interned, arena-owned) slice address.
++            long_levels().lock().unwrap_or_else(|e| e.into_inner()).insert(addr, s.len());
++            Self(addr | (LONG_LEVELS_TAG << META_SHIFT), PhantomData)
++        }
+     }
+ 
+     #[inline]
+     pub fn len(self) -> usize {
+-        (self.0 >> META_SHIFT) as usize
++        let l = self.0 >> META_SHIFT;
++        if l != LONG_LEVELS_TAG {
++            l as usize
++        } else {
++            *long_levels().lock().unwrap_or_else(|e| e.into_inner()).get(&(self.0 & ADDR)).expect("long universe list")
++        }
+     }
+ 
+     #[inline]

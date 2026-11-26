@@ -1,0 +1,20 @@
+case	expected_v433	official_rc	official_verdict	xvcheck_rc	check_sound_rc	check_sound_verdict	agree	detail
+P1	ACCEPTED	0	ACCEPTED	0	0	ACCEPTED	yes	Your solution is okay!
+P1-a-sorry	REJECTED	1	REJECTED	0	1	REJECTED	yes	error: Illegal axiom detected: 'sorryAx'
+P1-b-axiom	REJECTED	1	REJECTED	0	1	REJECTED	yes	error: Illegal axiom detected: 'cheat_nt02'
+P1-c-weaker	REJECTED	1	REJECTED	0	1	REJECTED	yes	error: Challenge and solution theorem statement do not match: 'nt02'
+P1-c2-defeq	REJECTED	1	REJECTED	0	1	REJECTED	yes	error: Challenge and solution theorem statement do not match: 'nt01'
+P1-e-binder	ACCEPTED	0	ACCEPTED	0	0	ACCEPTED	yes	Your solution is okay!
+P1-f-builderror	REJECTED	1	REJECTED	-	-	-	n/a	official build/export failed (rc 1): no export to judge
+P2	ACCEPTED	0	ACCEPTED	0	0	ACCEPTED	yes	Your solution is okay!
+P2-a-sorry	REJECTED	1	REJECTED	0	1	REJECTED	yes	error: Illegal axiom detected: 'sorryAx'
+P2-b-axiom	REJECTED	1	REJECTED	0	1	REJECTED	yes	error: Illegal axiom detected: 'cheat_an04'
+P2-c-stronger	REJECTED	1	REJECTED	0	1	REJECTED	yes	error: Challenge and solution theorem statement do not match: 'an03'
+P2-g-nativedecide	REJECTED	1	REJECTED	0	1	REJECTED	yes	error: Illegal axiom detected: 'aux_nd._native.native_decide.ax_1_1'
+P3	ACCEPTED	1	REJECTED	1	1	REJECTED	yes	error: Challenge definition is not sorried: 'triangle'
+P3-a-sorry	REJECTED	1	REJECTED	1	1	REJECTED	yes	error: Challenge definition is not sorried: 'triangle'
+P3-b-axiom	REJECTED	1	REJECTED	1	1	REJECTED	yes	error: Challenge definition is not sorried: 'triangle'
+P3-c-stmt	REJECTED	1	REJECTED	1	1	REJECTED	yes	error: Challenge and solution theorem statement do not match: 'al14'
+P3-d1-fixeddef	REJECTED	1	REJECTED	1	1	REJECTED	yes	error: Challenge definition is not sorried: 'triangle'
+P3-d2-holedef	ACCEPTED	1	REJECTED	1	1	REJECTED	yes	error: Challenge definition is not sorried: 'triangle'
+P3-h-missing	REJECTED	3	REJECTED	-	-	-	n/a	official build/export failed (rc 3): no export to judge

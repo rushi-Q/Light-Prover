@@ -1,0 +1,22 @@
+--- mkargs.py.orig
++++ mkargs.py
+@@ -133,9 +133,16 @@
+             if d not in keep and lib_of(d): keep.add(d); todo.append(d)
+     def args_of(m):
+         lib = lib_of(m)
+-        return (list(cfg.get('moreLeanArgs', [])) + list(lib.get('moreLeanArgs', [])) +
+-                [dflag(k, v) for k, v in pkg_opts.items()] + [dflag(k, v) for k, v in flat(lib.get('leanOptions', {})).items()] +
+-                list(cfg.get('weakLeanArgs', [])) + list(lib.get('weakLeanArgs', [])))
++        # Lake 4.33.1: cmdline = weakLeanArgs ++ moreLeanArgs (Build/Module.lean:972, LeanLib.lean:203-211); leanOptions =
++        # buildType.leanOptions ++ pkg ++ lib (LeanLib.lean:194) go into the setup JSON, which overrides cmdline -D
++        # (Elab/Frontend.lean:305) -> emit them LAST. buildType = min(pkg, lib) (LeanLib.lean:127); debug -> debugAssertions.
++        order = ['debug', 'relwithdebinfo', 'minsizerel', 'release']
++        bt = min((str(x).lower() for x in (cfg.get('buildType', 'release'), lib.get('buildType', 'release'))), key=order.index)
++        opts = ({'debugAssertions': True} if bt == 'debug' else {})
++        opts.update(pkg_opts); opts.update(flat(lib.get('leanOptions', {})))
++        return (list(cfg.get('weakLeanArgs', [])) + list(lib.get('weakLeanArgs', [])) +
++                list(cfg.get('moreLeanArgs', [])) + list(lib.get('moreLeanArgs', [])) +
++                [dflag(k, v) for k, v in opts.items()])
+     args = {m: args_of(m) for m in keep}
+     json.dump({m: [deps[m][0], [d for d in deps[m][1] if d in keep]] for m in keep}, open(f'{LOGD}/deps.json', 'w'))
+     json.dump(args, open(f'{LOGD}/args.json', 'w'), indent=0)

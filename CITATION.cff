@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use Light-Prover, please cite it using the metadata in this file."
+type: software
+title: "Light-Prover"
+abstract: >-
+  Light-Prover is a toolkit for sound verification of Lean 4 proofs.
+  It checks a whole project against a pinned challenge: every target statement,
+  every axiom and every declaration is re-checked by the official Lean kernel
+  and by an independent second kernel, while an untrusted fast build, a native
+  exporter and a parallel kernel replay reduce the time, memory and edit-loop
+  turnaround of the verification.
+authors:
+  - name: "Light-Prover contributors"
+version: "0.1.0"
+license: Apache-2.0
+keywords:
+  - Lean 4
+  - theorem proving
+  - proof verification
+  - formal verification
+  - proof checking

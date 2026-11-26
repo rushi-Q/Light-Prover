@@ -1,0 +1,690 @@
+diff --git a/Main.lean b/Main.lean
+index 4596c04..041531c 100644
+--- a/Main.lean
++++ b/Main.lean
+@@ -11,45 +11,36 @@ reference implementation), 1 if it failed and stdout could not be rewound.
+ opaque fastExportMain (searchPath : @& Array String) (spPartial : Bool) (roots : @& Array Name)
+     (targets : @& Array Name) (wholeEnv : Bool) (nthreads : UInt32) : IO UInt32
+ 
++/-
++F04 (fastverify): this binary is NATIVE-ONLY. It never runs the in-process reference implementation (finding 033: the
++f581123 reference path is a rewrite of Export.lean, not the official exporter). Exit codes:
++  0 = the native core wrote the complete export (byte-identical to the official lean4export by construction + tests),
++  2 = declined / failed: stdout holds NO valid export; the caller (fastverify/export/export.sh) then runs the
++      OFFICIAL lean4export binary on the same inputs into a fresh file.
++-/
+ def main (args : List String) : IO UInt32 := do
+   let (opts, args) := args.partition (fun s => s.startsWith "--" && s.length ≥ 3)
+   let (imports, constants) := args.span (· != "--")
+-  let imports := imports.toArray.map fun mod => { module := Syntax.decodeNameLit ("`" ++ mod) |>.get! }
+-  -- Fast path: no options (the native core implements the default export mode only), either an explicit target
+-  -- list or the whole environment (no `--`: the native core reproduces the order of
+-  -- `env.constants.toList.filter (!·.isInternal)` below).  `LEAN4EXPORT_NATIVE=0` forces the reference implementation.
+-  let native := (← IO.getEnv "LEAN4EXPORT_NATIVE").getD "1" != "0"
+-  if native && opts.isEmpty then
+-    let wholeEnv := constants.tail?.isNone
+-    let targets := (constants.tail?.getD []).toArray.map fun c => Syntax.decodeNameLit ("`" ++ c) |>.get!
+-    let nthreads := ((← IO.getEnv "LEAN4EXPORT_THREADS").bind String.toNat?).getD 0
+-    -- First try with the LEAN_PATH part of the search path only: computing the sysroot spawns `lean --print-prefix`
+-    -- (~50 ms).  The sysroot entry comes last, so wherever a module root is found in LEAN_PATH the lookup is the
+-    -- same; if some root is not found there, the native core writes nothing and returns 3 -> retry with everything.
+-    let spEnv := (← addSearchPathFromEnv []).toArray.map (·.toString)
+-    IO.println exportMetadata.compress
+-    (← IO.getStdout).flush
+-    let mut rc ← fastExportMain spEnv true (imports.map (·.module)) targets wholeEnv nthreads.toUInt32
+-    if rc == 3 then
+-      initSearchPath (← findSysroot)
+-      let sp := (← searchPathRef.get).toArray.map (·.toString)
+-      rc ← fastExportMain sp false (imports.map (·.module)) targets wholeEnv nthreads.toUInt32
+-    -- 2 = the native exporter failed and stdout was rewound: run the reference implementation instead
+-    if rc != 2 then
+-      return rc
+-  initSearchPath (← findSysroot)
+-  let env ← importModules imports {}
+-  let constants := match constants.tail? with
+-    | some cs => cs.map fun c => Syntax.decodeNameLit ("`" ++ c) |>.get!
+-    | none    => env.constants.toList.map Prod.fst |>.filter (!·.isInternal)
+-  M.run env do
+-    let _ ← initState env opts
+-    dumpMetadata
+-    for c in constants do
+-      modify (fun st => { st with noMDataExprs := {} })
+-      dumpConstant c
+-    -- Exit here instead of returning: returning would free the whole exporter state (all hash maps,
+-    -- ~1e9 entries for big exports) one object at a time. Output is complete once stdout is flushed.
+-    (← IO.getStdout).flush
+-    IO.Process.exit 0
+-  return 0
++  -- options (--export-mdata, --export-unsafe, --ignore-missing, ...) are not implemented natively: decline
++  unless opts.isEmpty do
++    IO.eprintln "lean4export (native-only): options are not supported natively, declining"
++    return 2
++  let imports := imports.toArray.map fun mod => { module := Syntax.decodeNameLit ("`" ++ mod) |>.get! : Import }
++  let wholeEnv := constants.tail?.isNone
++  let targets := (constants.tail?.getD []).toArray.map fun c => Syntax.decodeNameLit ("`" ++ c) |>.get!
++  let nthreads := ((← IO.getEnv "LEAN4EXPORT_THREADS").bind String.toNat?).getD 0
++  -- First try with the LEAN_PATH part of the search path only: computing the sysroot spawns `lean --print-prefix`
++  -- (~50 ms).  The sysroot entry comes last, so wherever a module root is found in LEAN_PATH the lookup is the
++  -- same; if some root is not found there, the native core writes nothing and returns 3 -> retry with everything.
++  let spEnv := (← addSearchPathFromEnv []).toArray.map (·.toString)
++  IO.println exportMetadata.compress
++  (← IO.getStdout).flush
++  let mut rc ← fastExportMain spEnv true (imports.map (·.module)) targets wholeEnv nthreads.toUInt32
++  if rc == 3 then
++    initSearchPath (← findSysroot)
++    let sp := (← searchPathRef.get).toArray.map (·.toString)
++    rc ← fastExportMain sp false (imports.map (·.module)) targets wholeEnv nthreads.toUInt32
++  if rc == 0 then
++    return 0
++  IO.eprintln s!"lean4export (native-only): native core failed (rc {rc}), declining"
++  return 2
+diff --git a/lakefile.lean b/lakefile.lean
+index 473f47e..3472ede 100644
+--- a/lakefile.lean
++++ b/lakefile.lean
+@@ -34,7 +34,10 @@ target fast_export.o pkg : FilePath := do
+     let hdr ← hdrJob.await
+     let sink ← sinkJob.await
+     return ((← getLeanTrace).mix (← computeTrace (TextFilePath.mk hdr))).mix (← computeTrace (TextFilePath.mk sink))
+-  buildO oFile srcJob weakArgs #["-O2", "-std=c++17", "-fPIC", "-pthread", "-fno-exceptions", "-fno-rtti"] "c++" extraTrace
++  -- F04: the githash of the Lean running this lakefile (= the toolchain that builds and links the exporter) is compiled
++  -- in; the native core rejects (declines) .olean files with any other githash, as the official reader does.
++  let ghArg := "-DF04_EXPECTED_GITHASH=\"" ++ Lean.githash ++ "\""
++  buildO oFile srcJob weakArgs #["-O2", "-std=c++17", "-fPIC", "-pthread", "-fno-exceptions", "-fno-rtti", ghArg] "c++" extraTrace
+ 
+ @[default_target]
+ lean_exe lean4export where
+diff --git a/native/fast_export.cpp b/native/fast_export.cpp
+index fc540a6..5517a3d 100644
+--- a/native/fast_export.cpp
++++ b/native/fast_export.cpp
+@@ -47,6 +47,12 @@ namespace lean4export_native {
+ 
+ typedef const uint8_t* P;
+ static const uint32_t NONE = 0xffffffffu;
++// F04: githash of the Lean toolchain this exporter is built with (lakefile passes -DF04_EXPECTED_GITHASH=Lean.githash);
++// every imported .olean must carry exactly this githash, as the official reader requires.
++#ifndef F04_EXPECTED_GITHASH
++#error "F04_EXPECTED_GITHASH must be defined (lakefile.lean passes Lean.githash)"
++#endif
++static_assert(sizeof(F04_EXPECTED_GITHASH) == 41, "F04_EXPECTED_GITHASH must be a 40-character githash");
+ 
+ [[noreturn]] static void die(const std::string& msg) {
+     fprintf(stderr, "lean4export (native): %s\n", msg.c_str());
+@@ -54,6 +60,32 @@ static const uint32_t NONE = 0xffffffffu;
+     _exit(1);
+ }
+ 
++// X01 fix (findings 010): strings that are not valid UTF-8 cannot be rendered byte-for-byte like the official exporter
++// (Json.renderString decodes and re-encodes them); give up so the reference implementation writes them.
++static bool utf8_ok(const uint8_t* p, size_t n) {
++    size_t i = 0;
++    while (i < n) {
++        uint8_t c = p[i];
++        if (c < 0x80) { i++; continue; }
++        size_t k; uint32_t cp;
++        if ((c & 0xE0) == 0xC0) { k = 1; cp = c & 0x1F; }
++        else if ((c & 0xF0) == 0xE0) { k = 2; cp = c & 0x0F; }
++        else if ((c & 0xF8) == 0xF0) { k = 3; cp = c & 0x07; }
++        else return false;
++        if (i + k >= n) return false;
++        for (size_t j = 1; j <= k; j++) {
++            uint8_t d = p[i + j];
++            if ((d & 0xC0) != 0x80) return false;
++            cp = (cp << 6) | (d & 0x3F);
++        }
++        if (k == 1 && cp < 0x80) return false;
++        if (k == 2 && (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF))) return false;
++        if (k == 3 && (cp < 0x10000 || cp > 0x10FFFF)) return false;
++        i += k + 1;
++    }
++    return true;
++}
++
+ static double now_s() {
+     struct timespec ts;
+     clock_gettime(CLOCK_MONOTONIC, &ts);
+@@ -694,6 +726,7 @@ struct Out {
+         buf[len++] = c;
+     }
+     void jstr(const uint8_t* p, size_t n) {
++        if (!utf8_ok(p, n)) die("string is not valid UTF-8");
+         reserve(n * 6 + 2);
+         char* o = buf + len;
+         *o++ = '"';
+@@ -1083,7 +1116,13 @@ struct In {
+         uint8_t t = tag(p);
+         EKey key{0, 0, 0, 0};
+         switch (t) {
+-            case 0: key = EKey{0, (uint32_t)nat_small(m, rawf(p, 0)), 0, 0}; break;
++            case 0: {
++                // F04 (fail closed): a de Bruijn index that does not fit in 32 bits is never truncated
++                uint64_t b64 = nat_small(m, rawf(p, 0));
++                if (b64 > 0xffffffffull) die("bound variable index does not fit in 32 bits");
++                key = EKey{0, (uint32_t)b64, 0, 0};
++                break;
++            }
+             case 3: key = EKey{3, intern_level(m, rawf(p, 0)), 0, 0}; break;
+             case 4: {
+                 uint32_t n = intern_name(m, rawf(p, 0));
+@@ -1165,7 +1204,10 @@ struct In {
+             }
+             case 11: {
+                 uint32_t n = intern_name(m, rawf(p, 0));
+-                uint32_t i = (uint32_t)nat_small(m, rawf(p, 1));
++                uint64_t i64 = nat_small(m, rawf(p, 1));
++                // X01 fix (finding 008): the index is a Nat; never truncate it (the reference implementation prints it whole)
++                if (i64 > 0xffffffffull) die("projection index does not fit in 32 bits");
++                uint32_t i = (uint32_t)i64;
+                 uint32_t e = intern_expr(m, f(m, p, 2), disc);
+                 key = EKey{11, n, i, e};
+                 break;
+@@ -1875,7 +1917,9 @@ struct St {
+         t = dump_expr(m, x->f(m, cval, 2));
+     }
+     void missing(uint32_t c) {
+-        fprintf(stderr, "PANIC: Constant %s not found in environment.\n", x->name_str(c).c_str());
++        // F04 (fail closed): the official exporter panics and continues here; its exact output on that path is not
++        // reproduced natively -> decline (the wrapper runs the official exporter)
++        die("constant " + x->name_str(c) + " not found in environment (declining)");
+     }
+ 
+     void dump_constant(uint32_t c) {
+@@ -2129,8 +2173,18 @@ struct St {
+             if (it != x->recmap.end()) {
+                 for (uint32_t rn : it->second)
+                     if (std::find(L.rec_names.begin(), L.rec_names.end(), rn) == L.rec_names.end()) L.rec_names.push_back(rn);
++            } else if (!L.ctor_vals.empty() && !x->is_unsafe(base)) {
++                // F04 (fail closed): official `assert! ctorVals.size == 0` fails (panic-and-continue path) -> decline
++                die("inductive block without recursor but with constructors (declining)");
+             }
+         }
++        // F04 (fail closed): the official exporter asserts that no member of a safe block (it never dumps unsafe
++        // bases) is unsafe; on that panic path its output is not reproduced natively -> decline
++        const bool base_safe = !x->is_unsafe(base);
++        if (base_safe) {
++            for (const CRef& r : L.ind_vals) if (x->is_unsafe(r)) die("unsafe inductive in a block (declining)");
++            for (const CRef& r : L.ctor_vals) if (x->is_unsafe(r)) die("unsafe constructor in a block (declining)");
++        }
+         for (const CRef& cr : L.ctor_vals) {
+             P cval_, ccval;
+             x->vals(cr, cval_, ccval);
+@@ -2140,6 +2194,7 @@ struct St {
+         for (uint32_t rn : L.rec_names) {
+             CRef rr = get(rn);
+             if (rr.m == NONE || tag(rr.ci) != 7) die("expected a constantinfo.recinfo");
++            if (base_safe && x->is_unsafe(rr)) die("unsafe recursor in a block (declining)");
+             L.rec_vals.push_back(rr);
+         }
+     }
+@@ -2410,6 +2465,7 @@ struct RBuf {  // render buffer (same rendering as Out); memory from the output
+         buf[len++] = c;
+     }
+     void jstr(const uint8_t* p, size_t n) {  // = Out::jstr
++        if (!utf8_ok(p, n)) die("string is not valid UTF-8");
+         reserve(n * 6 + 2);
+         char* o = buf + len;
+         *o++ = '"';
+@@ -2533,7 +2589,10 @@ struct PD {
+     struct DL {
+         uint32_t off = 0, n1 = 0, n2 = 0;  // n1 entries for the type, then n2 for the value / recursor rules,
+         uint32_t n3 = 0;                     // then n3 "members": ctor: [induct]; recursor: all; inductive: see b1
+-        uint8_t tid = 0, lit = 0;            // lit: 1 = contains a Nat literal, 2 = a String literal
++        uint16_t tid = 0;                    // dlbuf index (= B1 / phase-A worker); F04: was uint8_t (wrapped at > 256
++                                             // threads -> used-constant lists of the wrong worker -> missing constants;
++                                             // team E's fix 65bbc36 was not in f581123)
++        uint8_t lit = 0;                     // lit: 1 = contains a Nat literal, 2 = a String literal
+         uint8_t kind = 0xff;                 // ConstantInfo tag (0xff = not a safe closure constant)
+     };
+     std::vector<DL> dl;
+@@ -2663,7 +2722,8 @@ struct PD {
+                 for (size_t q = j; q < je; q++) {
+                     uint32_t c = closure[q];
+                     DL d;
+-                    d.tid = (uint8_t)tid;
++                    if (tid > 0xffff) die("internal: too many threads for the used-constant lists");
++                    d.tid = (uint16_t)tid;
+                     d.off = (uint32_t)out.size();
+                     // One stamp for all roots of c: a constant already listed for an earlier root is visited when the
+                     // later root's list is replayed, so it is dropped there, and classes seen in an earlier root are not
+@@ -3986,6 +4046,31 @@ struct PD {
+ // ------------------------------------------------------------------------------------------------
+ // loading
+ static bool g_populate = false;
++// F04: read() fallback buffers come from ONE big MAP_NORESERVE anonymous reservation (bump allocation) instead of one
++// malloc per file: glibc serves large mallocs with mmap, so once vm.max_map_count (65,530 on most hosts) is exhausted by
++// the per-file mappings, malloc failed too and the export declined (full RH: ~450k olean parts). Contents are identical
++// (the bytes of the file); only where they live changes.
++static char* arena_alloc(size_t len) {
++    static std::atomic<char*> base{nullptr};
++    static std::atomic<size_t> off{0};
++    static std::mutex mu;
++    const size_t CAP = (size_t)4 << 40;  // 4 TiB of address space; pages are only committed when read into
++    char* b = base.load(std::memory_order_acquire);
++    if (!b) {
++        std::lock_guard<std::mutex> g(mu);
++        b = base.load(std::memory_order_acquire);
++        if (!b) {
++            void* m = mmap(nullptr, CAP, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
++            if (m == MAP_FAILED) return nullptr;
++            b = (char*)m;
++            base.store(b, std::memory_order_release);
++        }
++    }
++    size_t a = (len + 4095) & ~(size_t)4095;
++    size_t o = off.fetch_add(a, std::memory_order_relaxed);
++    if (o + a > CAP) return nullptr;
++    return b + o;
++}
+ static Part read_part(const std::string& path) {
+     int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+     if (fd < 0) die("object file '" + path + "' does not exist or cannot be opened");
+@@ -3997,7 +4082,7 @@ static Part read_part(const std::string& path) {
+     void* m = test_read ? MAP_FAILED : reg_mmap(len, PROT_READ, MAP_PRIVATE | (g_populate ? MAP_POPULATE : 0), fd);
+     if (m == MAP_FAILED) {
+         // e.g. ENOMEM when vm.max_map_count is reached (full-RH scale: ~450k parts): read the file instead, as Lean does
+-        char* b = (char*)malloc(len);
++        char* b = arena_alloc(len);
+         if (!b) die("mmap " + path + " failed and out of memory");
+         size_t off = 0;
+         while (off < len) {
+@@ -4012,6 +4097,13 @@ static Part read_part(const std::string& path) {
+     P p = (P)m;
+     if (memcmp(p, "olean", 5) != 0) die(path + ": not an olean");
+     if (p[5] != 2) die(path + ": unsupported olean version " + std::to_string(p[5]));
++    // F04 (fail closed): the official reader (src/library/module.cpp, release builds with LEAN_CHECK_OLEAN_VERSION and
++    // GMP) also rejects an .olean whose flags byte differs from 1 or whose githash differs from the githash of the Lean
++    // the exporter was built with ("incompatible header"); the native core used to accept any githash (oleans of another
++    // Lean version) -> decline in exactly those cases (the official exporter then reports the error).
++    if (p[6] != 1) die(path + ": olean flags byte " + std::to_string(p[6]) + " != 1 (declining)");
++    if (strncmp((const char*)p + 0x28, F04_EXPECTED_GITHASH, 40) != 0)
++        die(path + ": olean githash differs from the exporter's Lean githash (declining)");
+     uint64_t base;
+     memcpy(&base, p + 0x50, 8);
+     return Part{base, p, (uint64_t)len};
+@@ -4104,6 +4196,75 @@ static std::string pretty_comps(const std::vector<std::string>& c) {
+     return s;
+ }
+ 
++// ---- F04 (fail closed): what the official importModules (globalLevel .private, as lean4export calls it) reads beyond the
++// native core's needs.  (1) For EVERY visited module it also loads the IR parts (`readIRPartsOfMod`: if `X.ir.sig` exists,
++// `X.ir.sig` and `X.ir` are read with the same header checks, a missing `X.ir` is an error).  (2) finalizeImport
++// dereferences `extraConstNames` (Names, hashed/compared for const2ModIdx) and `entries` (Name x Array, extension
++// lookup by name) of the main data (private part for module files) and of the `.ir` data.  The native core used to
++// ignore all of that, so an .ir/.ir.sig file with a bad header (other Lean, garbage) or a ModuleData whose entries are
++// broken made the official exporter fail while the native one succeeded.  Now: header checks exactly as for .olean
++// files, and a structural validation of the objects the official code touches; anything off -> decline.
++static P tr_parts(const std::vector<Part>& parts, uint64_t a, size_t need, const std::string& what) {
++    for (const Part& p : parts) {
++        uint64_t off = a - p.base;
++        if (off < p.len) {
++            if (need > p.len - off) die("object crosses the end of its region in " + what + " (declining)");
++            return p.ptr + off;
++        }
++    }
++    die("dangling pointer in " + what + " (declining)");
++}
++static void validate_name(const std::vector<Part>& parts, uint64_t r, const std::string& what) {
++    size_t guard = 0;
++    while (!is_scalar(r)) {
++        if (++guard > 100000) die("name too deep in " + what + " (declining)");
++        P p = tr_parts(parts, r, 8 + 16 + 8, what);
++        uint8_t t = tag(p);
++        if ((t != 1 && t != 2) || nobjs(p) != 2) die("malformed Name in " + what + " (declining)");
++        uint64_t f1 = rawf(p, 1);
++        if (t == 1) {
++            if (is_scalar(f1)) die("malformed Name string in " + what + " (declining)");
++            P sh = tr_parts(parts, f1, 32, what);
++            if (tag(sh) != T_STRING) die("malformed Name string in " + what + " (declining)");
++            uint64_t sz;
++            memcpy(&sz, sh + 8, 8);
++            if (sz == 0) die("malformed Name string in " + what + " (declining)");
++            tr_parts(parts, f1, 32 + sz, what);
++        } else if (!is_scalar(f1)) {
++            P nn = tr_parts(parts, f1, 24, what);
++            if (tag(nn) != T_MPZ) die("malformed Name number in " + what + " (declining)");
++        }
++        r = rawf(p, 0);
++    }
++    if (r != 1) die("malformed Name (scalar " + std::to_string(r) + ") in " + what + " (declining)");
++}
++static void validate_md(const std::vector<Part>& parts, uint64_t root, const std::string& what) {
++    P d = tr_parts(parts, root, 8 + 5 * 8 + 1, what);
++    if (tag(d) != 0 || nobjs(d) != 5) die("malformed ModuleData in " + what + " (declining)");
++    for (size_t k = 0; k < 5; k++)
++        if (is_scalar(rawf(d, k))) die("malformed ModuleData field in " + what + " (declining)");
++    auto array = [&](uint64_t r) {
++        P a = tr_parts(parts, r, 24, what);
++        if (tag(a) != T_ARRAY) die("malformed array in " + what + " (declining)");
++        size_t n = arr_size(a);
++        if (n > ((uint64_t)1 << 40)) die("malformed array size in " + what + " (declining)");
++        tr_parts(parts, r, 24 + 8 * n, what);
++        return a;
++    };
++    for (size_t k = 0; k < 3; k++) array(rawf(d, k));  // imports, constNames, constants (shapes; read natively)
++    P extra = array(rawf(d, 3));                        // extraConstNames
++    for (size_t i = 0; i < arr_size(extra); i++) validate_name(parts, arr_raw(extra, i), what);
++    P ents = array(rawf(d, 4));                         // entries : Array (Name x Array EnvExtensionEntry)
++    for (size_t i = 0; i < arr_size(ents); i++) {
++        uint64_t e = arr_raw(ents, i);
++        if (is_scalar(e)) die("malformed entries in " + what + " (declining)");
++        P pr = tr_parts(parts, e, 8 + 16, what);
++        if (tag(pr) != 0 || nobjs(pr) != 2 || is_scalar(rawf(pr, 1))) die("malformed entries pair in " + what + " (declining)");
++        validate_name(parts, rawf(pr, 0), what);
++        array(rawf(pr, 1));
++    }
++}
++
+ // loads the module of slot `mi` (mods[mi].comps set by the caller; the slot already exists)
+ static void load_module(std::vector<Module>& mods, const std::vector<std::string>& sp, uint32_t mi) {
+     const std::vector<std::string>& comps = mods[mi].comps;
+@@ -4124,8 +4285,21 @@ static void load_module(std::vector<Module>& mods, const std::vector<std::string
+         mods[mi].parts.push_back(s);
+         mods[mi].parts.push_back(p);
+         data = tr_mods(mods, mi, proot);
++        validate_md(mods[mi].parts, proot, path + ".private");
++    } else {
++        validate_md(mods[mi].parts, root, path);
+     }
+     mods[mi].data = data;
++    // IR parts (official readIRPartsOfMod: `mFile.withExtension "ir.sig"`, then "ir")
++    std::string base = path.substr(0, path.size() - 6);  // strip ".olean"
++    if (exists(base + ".ir.sig")) {
++        std::vector<Part> ir;
++        ir.push_back(read_part(base + ".ir.sig"));  // header checks (marker, version, flags, githash) as for .olean
++        ir.push_back(read_part(base + ".ir"));      // must exist (the official read fails otherwise)
++        uint64_t iroot;
++        memcpy(&iroot, ir[1].ptr + 0x58, 8);
++        validate_md(ir, iroot, base + ".ir");
++    }
+ }
+ static void imports_of(const std::vector<Module>& mods, uint32_t mi, std::vector<std::vector<std::string>>& out) {
+     P d = mods[mi].data;
+@@ -4192,6 +4366,189 @@ struct Args {
+     bool list_mode = false;
+ };
+ 
++
++// ------------------------------------------------------------------------------------------------
++// F04 (finding 013): Lean's finalizeImport duplicate-constant rule (Environment.lean v4.33.1 subsumesInfo), decided
++// natively only where it can be decided exactly; everything else declines (die -> the official exporter runs).
++// StrictEq is a sufficient condition for Lean's `==`: structural equality of Name / Level / List Name (all fields,
++// cached hashes) and, for Expr, the rules of Expr.eqv (kernel/expr_eq_fn.cpp, expr_eq_fn<false>: binder names and
++// binder infos ignored, letE nondep compared, mdata KVMaps without Syntax values) plus a full compare of the cached
++// Expr.Data word; fvar and mvar are never matched. StrictEq(a, b) => (a == b) in Lean; a mismatch is NOT proof of inequality -> decline.
++struct StrictEq {
++    In* x;
++    uint64_t budget = 50000000;  // object comparisons; exhausted -> decline
++    const char* why = "";        // diagnostics only
++    std::unordered_map<uintptr_t, uintptr_t> memo;  // Expr object pa -> an object pb proven strictly equal to it
++    bool tick() { return budget-- > 0; }
++    bool nat(uint32_t ma, uint64_t a, uint32_t mb, uint64_t b) {
++        if (is_scalar(a) || is_scalar(b)) return a == b;
++        P pa = x->tr(ma, a), pb = x->tr(mb, b);
++        if (tag(pa) != T_MPZ || tag(pb) != T_MPZ) return false;
++        int32_t sa, sb;
++        memcpy(&sa, pa + 12, 4);
++        memcpy(&sb, pb + 12, 4);
++        if (sa != sb || sa < 0) return false;
++        uint64_t da, db;
++        memcpy(&da, pa + 16, 8);
++        memcpy(&db, pb + 16, 8);
++        if (sa == 0) return true;
++        return memcmp(x->tr(ma, da), x->tr(mb, db), (size_t)sa * 8) == 0;
++    }
++    bool str(uint32_t ma, uint64_t a, uint32_t mb, uint64_t b) {
++        if (is_scalar(a) || is_scalar(b)) return false;
++        P pa = x->tr(ma, a), pb = x->tr(mb, b);
++        if (tag(pa) != T_STRING || tag(pb) != T_STRING) return false;
++        size_t la = str_len(pa), lb = str_len(pb);
++        return la == lb && memcmp(str_data(pa), str_data(pb), la) == 0;
++    }
++    bool name(uint32_t ma, uint64_t a, uint32_t mb, uint64_t b) {
++        if (!tick()) return false;
++        if (is_scalar(a) || is_scalar(b)) return a == b;  // Name.anonymous = box(0)
++        P pa = x->tr(ma, a), pb = x->tr(mb, b);
++        uint8_t t = tag(pa);
++        if (t != tag(pb) || nobjs(pa) != 2 || nobjs(pb) != 2) return false;
++        if (sc_u64(pa, 0) != sc_u64(pb, 0)) { why = "name hash"; return false; }  // cached hash
++        if (t == 1) { if (!str(ma, rawf(pa, 1), mb, rawf(pb, 1))) { why = "name str"; return false; } }
++        else if (t == 2) { if (!nat(ma, rawf(pa, 1), mb, rawf(pb, 1))) { why = "name num"; return false; } }
++        else return false;
++        return name(ma, rawf(pa, 0), mb, rawf(pb, 0));
++    }
++    bool level(uint32_t ma, uint64_t a, uint32_t mb, uint64_t b) {
++        if (!tick()) return false;
++        if (is_scalar(a) || is_scalar(b)) return a == b;
++        P pa = x->tr(ma, a), pb = x->tr(mb, b);
++        uint8_t t = tag(pa);
++        if (t != tag(pb) || nobjs(pa) != nobjs(pb)) { why = "level tag"; return false; }
++        if (sc_u64(pa, 0) != sc_u64(pb, 0)) { why = "level data"; return false; }  // cached Level.Data
++        switch (t) {
++            case 0: return nobjs(pa) == 0;
++            case 1: return nobjs(pa) == 1 && level(ma, rawf(pa, 0), mb, rawf(pb, 0));
++            case 2: case 3:
++                return nobjs(pa) == 2 && level(ma, rawf(pa, 0), mb, rawf(pb, 0)) && level(ma, rawf(pa, 1), mb, rawf(pb, 1));
++            case 4: return nobjs(pa) == 1 && name(ma, rawf(pa, 0), mb, rawf(pb, 0));
++            default: return false;  // mvar: decline
++        }
++    }
++    template <class F>
++    bool list(uint32_t ma, uint64_t a, uint32_t mb, uint64_t b, F elem) {
++        while (true) {
++            if (!tick()) return false;
++            if (is_scalar(a) || is_scalar(b)) return a == b;  // List.nil = box(0)
++            P pa = x->tr(ma, a), pb = x->tr(mb, b);
++            if (tag(pa) != 1 || tag(pb) != 1 || nobjs(pa) != 2 || nobjs(pb) != 2) return false;
++            if (!elem(rawf(pa, 0), rawf(pb, 0))) return false;
++            a = rawf(pa, 1);
++            b = rawf(pb, 1);
++        }
++    }
++    // DataValue (deriving BEq): ofString 0, ofBool 1, ofName 2, ofNat 3, ofInt 4; ofSyntax 5 is never matched
++    bool dval(uint32_t ma, uint64_t a, uint32_t mb, uint64_t b) {
++        if (is_scalar(a) || is_scalar(b)) return false;
++        P pa = x->tr(ma, a), pb = x->tr(mb, b);
++        uint8_t t = tag(pa);
++        if (t != tag(pb) || nobjs(pa) != nobjs(pb)) return false;
++        switch (t) {
++            case 0: return nobjs(pa) == 1 && str(ma, rawf(pa, 0), mb, rawf(pb, 0));
++            case 1: return nobjs(pa) == 0 && sc_u8(pa, 0) == sc_u8(pb, 0);
++            case 2: return nobjs(pa) == 1 && name(ma, rawf(pa, 0), mb, rawf(pb, 0));
++            case 3: case 4: return nobjs(pa) == 1 && nat(ma, rawf(pa, 0), mb, rawf(pb, 0));  // Int: scalar or mpz >= 0
++            default: return false;
++        }
++    }
++    // KVMap = List (Name x DataValue); C++ kvmap == compares the lists element-wise (name ==, data_value ==)
++    bool kvmap(uint32_t ma, uint64_t a, uint32_t mb, uint64_t b) {
++        return list(ma, a, mb, b, [&](uint64_t u, uint64_t v) {
++            if (is_scalar(u) || is_scalar(v)) return false;
++            P qa = x->tr(ma, u), qb = x->tr(mb, v);
++            if (tag(qa) != 0 || tag(qb) != 0 || nobjs(qa) != 2 || nobjs(qb) != 2) return false;
++            return name(ma, rawf(qa, 0), mb, rawf(qb, 0)) && dval(ma, rawf(qa, 1), mb, rawf(qb, 1));
++        });
++    }
++    bool names(uint32_t ma, uint64_t a, uint32_t mb, uint64_t b) {
++        return list(ma, a, mb, b, [&](uint64_t u, uint64_t v) { return name(ma, u, mb, v); });
++    }
++    bool expr(uint32_t ma, uint64_t a, uint32_t mb, uint64_t b) {
++        if (!tick()) return false;
++        if (is_scalar(a) || is_scalar(b)) return false;
++        P pa = x->tr(ma, a), pb = x->tr(mb, b);
++        auto it = memo.find((uintptr_t)pa);
++        if (it != memo.end() && it->second == (uintptr_t)pb) return true;  // exact pair proven equal before
++        uint8_t t = tag(pa);
++        if (t != tag(pb) || nobjs(pa) != nobjs(pb)) { why = "expr tag"; return false; }
++        if (sc_u64(pa, 0) != sc_u64(pb, 0)) { why = "expr data"; return false; }  // cached Expr.Data (hash, flags, ranges)
++        bool ok;
++        switch (t) {
++            case 0: ok = nobjs(pa) == 1 && nat(ma, rawf(pa, 0), mb, rawf(pb, 0)); break;
++            case 3: ok = nobjs(pa) == 1 && level(ma, rawf(pa, 0), mb, rawf(pb, 0)); break;
++            case 4:
++                ok = nobjs(pa) == 2 && name(ma, rawf(pa, 0), mb, rawf(pb, 0)) &&
++                     list(ma, rawf(pa, 1), mb, rawf(pb, 1), [&](uint64_t u, uint64_t v) { return level(ma, u, mb, v); });
++                break;
++            case 5: ok = nobjs(pa) == 2 && expr(ma, rawf(pa, 0), mb, rawf(pb, 0)) && expr(ma, rawf(pa, 1), mb, rawf(pb, 1)); break;
++            case 6: case 7:  // Expr.eqv (expr_eq_fn<false>): binder names and binder infos are NOT compared
++                ok = nobjs(pa) == 3 && expr(ma, rawf(pa, 1), mb, rawf(pb, 1)) && expr(ma, rawf(pa, 2), mb, rawf(pb, 2));
++                break;
++            case 8:  // Expr.eqv: type, value, body and the nondep flag (scalar byte after Data); not the name
++                ok = nobjs(pa) == 4 && sc_u8(pa, 8) == sc_u8(pb, 8) && expr(ma, rawf(pa, 1), mb, rawf(pb, 1)) &&
++                     expr(ma, rawf(pa, 2), mb, rawf(pb, 2)) && expr(ma, rawf(pa, 3), mb, rawf(pb, 3));
++                break;
++            case 9: {
++                if (nobjs(pa) != 1) { ok = false; break; }
++                uint64_t la = rawf(pa, 0), lb = rawf(pb, 0);
++                if (is_scalar(la) || is_scalar(lb)) { ok = false; break; }
++                P qa = x->tr(ma, la), qb = x->tr(mb, lb);
++                if (tag(qa) != tag(qb) || nobjs(qa) != 1 || nobjs(qb) != 1) { ok = false; break; }
++                if (tag(qa) == 0) ok = nat(ma, rawf(qa, 0), mb, rawf(qb, 0));
++                else if (tag(qa) == 1) ok = str(ma, rawf(qa, 0), mb, rawf(qb, 0));
++                else ok = false;
++                break;
++            }
++            case 11:
++                ok = nobjs(pa) == 3 && name(ma, rawf(pa, 0), mb, rawf(pb, 0)) && nat(ma, rawf(pa, 1), mb, rawf(pb, 1)) &&
++                     expr(ma, rawf(pa, 2), mb, rawf(pb, 2));
++                break;
++            case 10:  // mdata: expr_eq_fn compares the inner expression and the KVMap (C++ kvmap ==)
++                ok = nobjs(pa) == 2 && expr(ma, rawf(pa, 1), mb, rawf(pb, 1)) && kvmap(ma, rawf(pa, 0), mb, rawf(pb, 0));
++                break;
++            default: ok = false;  // fvar, mvar: decline
++        }
++        if (ok) memo[(uintptr_t)pa] = (uintptr_t)pb;  // exact pair (no hashing of the pair: no collisions)
++        return ok;
++    }
++};
++// 1: the new constant replaces the previous one; 0: the previous one stays; -1: decline (cannot decide natively, or
++// Lean throws "import failed, environment already contains ...": the official exporter reproduces that error)
++static int dup_rule(In* x, uint32_t mn, P cin, uint32_t mp, P cip, const char*& why) {
++    uint8_t tn = tag(cin), tp = tag(cip);
++    why = "kinds";
++    if (!((tn == 2 || tn == 0) && (tp == 2 || tp == 0))) return -1;
++    why = "axiom/axiom";
++    if (tn == 0 && tp == 0) return -1;  // axiom/axiom needs isPropCheap: decline
++    P vn = x->f(mn, cin, 0), vp = x->f(mp, cip, 0);
++    P cn = x->f(mn, vn, 0), cp = x->f(mp, vp, 0);  // ConstantVal {name, levelParams, type}
++    StrictEq q{x};
++    why = "name";
++    if (!q.name(mn, rawf(cn, 0), mp, rawf(cp, 0))) return -1;
++    why = "type";
++    if (!q.expr(mn, rawf(cn, 2), mp, rawf(cp, 2))) { if (*q.why) why = q.why; return -1; }
++    why = "levelParams";
++    if (!q.names(mn, rawf(cn, 1), mp, rawf(cp, 1))) return -1;
++    why = "all/unsafe";
++    if (tn == 2 && tp == 2) {  // TheoremVal {toConstantVal, value, all}: all == all -> the new one wins
++        return q.names(mn, rawf(vn, 2), mp, rawf(vp, 2)) ? 1 : -1;
++    }
++    // theorem/axiom pair: thm.all == [ax.name] && !ax.isUnsafe
++    uint32_t mt = tn == 2 ? mn : mp, ma = tn == 2 ? mp : mn;
++    P vt = tn == 2 ? vn : vp, va = tn == 2 ? vp : vn, ca = tn == 2 ? cp : cn;
++    if (sc_u8(va, 0) != 0) return -1;  // AxiomVal.isUnsafe
++    uint64_t all = rawf(vt, 2);
++    if (is_scalar(all)) return -1;
++    P cell = x->tr(mt, all);
++    if (tag(cell) != 1 || nobjs(cell) != 2 || rawf(cell, 1) != 1) return -1;  // exactly one element (tail = nil = box(0))
++    if (!q.name(mt, rawf(cell, 0), ma, rawf(ca, 0))) return -1;
++    return tn == 2 ? 1 : 0;  // new theorem over axiom: new wins; new axiom after theorem: the theorem stays
++}
++
+ static void run(Args& a) {
+     size_t nthreads = a.nthreads;
+     logf("start: %s threads", std::to_string(nthreads));
+@@ -4383,7 +4740,7 @@ static void run(Args& a) {
+         run_with_stack((size_t)256 << 20, fns);
+     }
+     logf("constant names interned%s", "");
+-    size_t nconst = 0, nuniq = 0;
++    size_t nconst = 0, nuniq = 0, ndup = 0;
+     std::vector<uint32_t> first_order;  // whole-env mode: constant names in first-insertion order
+     x->cmap.assign(x->nc.load(), CRef{NONE, nullptr});
+     for (size_t k = 0; k < order.size(); k++) {
+@@ -4398,17 +4755,14 @@ static void run(Args& a) {
+                 nuniq++;
+                 if (a.whole_env) first_order.push_back(nm);
+             } else {
+-                // subsumesInfo: theorem/theorem, theorem over axiom, axiom/axiom -> the later one wins;
+-                // axiom after theorem -> keep the theorem; anything else is an import error in Lean.
+-                uint8_t tn = tag(ci), tp = tag(slot.ci);
+-                bool new_wins;
+-                if ((tn == 2 && tp == 2) || (tn == 2 && tp == 0) || (tn == 0 && tp == 0))
+-                    new_wins = true;
+-                else if (tn == 0 && tp == 2)
+-                    new_wins = false;
+-                else
+-                    die("import failed, environment already contains '" + x->name_str(nm) + "'");
+-                if (new_wins) slot = CRef{mi, ci};
++                // F04 (finding 013): exact subsumesInfo on strictly equal type/levelParams/all, else decline
++                ndup++;
++                const char* why = "";
++                int r = dup_rule(x, mi, ci, slot.m, slot.ci, why);
++                if (r < 0)
++                    die("duplicate constant '" + x->name_str(nm) + "' (tags " + std::to_string(tag(ci)) + "/" +
++                        std::to_string(tag(slot.ci)) + ", " + why + ") not decidable natively (declining)");
++                if (r == 1) slot = CRef{mi, ci};
+             }
+         }
+     }
+@@ -4421,7 +4775,7 @@ static void run(Args& a) {
+     // (AssocList.cons at the bucket head); a duplicate replaces in place (`insert` -> `replace`), keeping the position
+     // of the first insertion.  fold visits buckets 0..N-1, each from head (newest) to tail, so the reversed list is
+     // buckets N-1..0, each in first-insertion order.  Bucket index = mkIdx: scrambleHash (Name.hash) &&& (N - 1).
+-    logf("constant map built%s", "");
++    logf("constant map built%s", (" (" + std::to_string(ndup) + " duplicate names resolved)").c_str());
+     std::vector<uint32_t> env_order;
+     if (a.whole_env) {
+         uint64_t want = (uint64_t)nconst * 4 / 3;
+@@ -4540,7 +4894,8 @@ static void run(Args& a) {
+             std::vector<std::string> c;
+             for (const NameComp& nc : a.targets[i])
+                 c.push_back(nc.kind == 1 ? nc.s : nc.kind == 2 ? std::to_string(nc.num) : std::string("?"));
+-            fprintf(stderr, "PANIC: Constant %s not found in environment.\n", pretty_comps(c).c_str());
++            // F04 (fail closed): decline before any output; the official exporter defines this path
++            die("target constant " + pretty_comps(c) + " not found in environment (declining)");
+         }
+         tids.push_back(id);
+     }
+@@ -4550,7 +4905,6 @@ static void run(Args& a) {
+         if (g_verbose) logf("thp: %s", thp_faults());
+         logf("phase A done: %s", "names " + std::to_string(x->nc.load()) + " exprs " + std::to_string(x->ec.load()) +
+                                       " levels " + std::to_string(x->lc.load()));
+-        if (getenv("LEAN4EXPORT_STOP_AFTER_A")) _exit(0);  // profiling aid: truncated output, reported as success
+     }
+     // ---- phase B (dump in lean4export order)
+     gate_wait();  // early child: wait until the parent has written the metadata line and confirmed the arguments
+@@ -4689,7 +5043,7 @@ __attribute__((constructor(102))) static void early_start(int argc, char** argv)
+         return v && *v && strcmp(v, "0") != 0;
+     };
+     // Main.lean takes the native path iff LEAN4EXPORT_NATIVE != "0" and there are no options
+-    if (off("LEAN4EXPORT_NATIVE") || off("LEAN4EXPORT_EARLY") || on("LEAN4EXPORT_NOFORK") || on("LEAN4EXPORT_LIST")) return;
++    if (off("LEAN4EXPORT_NATIVE") || off("LEAN4EXPORT_EARLY") || on("LEAN4EXPORT_NOFORK") ) return;
+     const char* lp = getenv("LEAN_PATH");
+     if (!lp || argc < 2) return;
+     uint32_t nraw = 0;
+@@ -4833,8 +5187,7 @@ extern "C" LEAN_EXPORT lean_obj_res lean4export_fast_main(b_lean_obj_arg sp, uin
+     g_t0 = now_s();  // shared by the parent (watchdog) and the forked child
+     const char* pp = getenv("LEAN4EXPORT_POPULATE");
+     g_populate = pp && *pp && strcmp(pp, "0") != 0;
+-    const char* lm = getenv("LEAN4EXPORT_LIST");
+-    a.list_mode = lm && *lm && strcmp(lm, "0") != 0;
++    a.list_mode = false;  // F04: LEAN4EXPORT_LIST (testing aid, different output) removed from the production binary
+     // The native exporter runs in a forked child (before any of its threads exist).  If it fails in any way (fatal
+     // error, crash, OOM kill), stdout is truncated and Main.lean falls back to the reference implementation, so a bug
+     // here can cost time but cannot lose the export.  LEAN4EXPORT_NOFORK=1 runs it in-process (debugging).
+@@ -4918,7 +5271,7 @@ extern "C" LEAN_EXPORT lean_obj_res lean4export_fast_main(b_lean_obj_arg sp, uin
+             }
+         }
+         if (pid < 0) {
+-            fprintf(stderr, "lean4export: fork failed (%s), using the reference implementation\n", strerror(errno));
++            fprintf(stderr, "lean4export: fork failed (%s), declining\n", strerror(errno));
+             return lean_io_result_mk_ok(lean_box_uint32(2));
+         }
+         status = 0;
+@@ -4990,6 +5343,6 @@ extern "C" LEAN_EXPORT lean_obj_res lean4export_fast_main(b_lean_obj_arg sp, uin
+         fprintf(stderr, "lean4export: cannot rewind stdout (%s), giving up\n", strerror(errno));
+         return lean_io_result_mk_ok(lean_box_uint32(1));
+     }
+-    fprintf(stderr, "lean4export: falling back to the reference implementation\n");
++    fprintf(stderr, "lean4export: native core failed, declining (no reference fallback in this binary)\n");
+     return lean_io_result_mk_ok(lean_box_uint32(2));
+ }

@@ -1,0 +1,119 @@
+--- a/src/induct.rs
++++ b/src/induct.rs
+@@ -437,13 +437,16 @@
+             let mut v = self.env_get(env, self.tp(f) - depth)?;
+             // (row, level list, head argument values) of the parameter's argument, if it is a constant application
+             let mut head: Option<(u32, u32, Vec<V>)> = None;
++            // Z04-9 fix: argument values of the spines peeled so far, outermost last. Lean substitutes the
++            // parameters syntactically (instantiate_rev, no beta), so a parameter whose argument is itself a
++            // parameter application (`g α` with g := `f β`, f := `Box2`) is the constant application
++            // `Box2 β α`: a variable head is followed into its value, and the arguments peeled on the way
++            // are appended after the head's own ones
++            let mut acc: Vec<V> = Vec::new();
+             loop {
++                self.tick()?;
+                 match self.val(v) {
+                     Val::Thunk { term, env: he, ls: hl } => {
+-                        if self.tk(term) == BVAR {
+-                            v = self.env_get(he, self.tp(term))?;
+-                            continue;
+-                        }
+                         let mut hargs = Vec::new();
+                         let mut hf = term;
+                         while self.tk(hf) == APP {
+@@ -451,13 +454,24 @@
+                             hf = self.ta(hf);
+                         }
+                         hargs.reverse();
++                        if self.tk(hf) == BVAR {
++                            let mut hv = Vec::with_capacity(hargs.len() + acc.len());
++                            for &a in &hargs {
++                                hv.push(self.thunk(a, he, hl)?);
++                            }
++                            hv.extend_from_slice(&acc);
++                            acc = hv;
++                            v = self.env_get(he, self.tp(hf))?;
++                            continue;
++                        }
+                         if self.tk(hf) == CONST {
+                             let r = self.env.row(self.ta(hf));
+                             if r != NONE {
+-                                let mut hv = Vec::new();
++                                let mut hv = Vec::with_capacity(hargs.len() + acc.len());
+                                 for &a in &hargs {
+                                     hv.push(self.thunk(a, he, hl)?);
+                                 }
++                                hv.extend_from_slice(&acc);
+                                 let l = self.lsub_ll(hf, hl);
+                                 head = Some((r, l, hv));
+                             }
+@@ -465,7 +479,9 @@
+                     }
+                     Val::Neu { head: Head::Const(r, l), spine } => {
+                         if let Some(xs) = self.app_args(spine) {
+-                            head = Some((r, l, xs.to_vec()));
++                            let mut hv = xs.to_vec();
++                            hv.extend_from_slice(&acc);
++                            head = Some((r, l, hv));
+                         }
+                     }
+                     _ => {}
+@@ -1302,18 +1318,21 @@
+             for m in 0..nt {
+                 a = self.rec_pi(a, "motive")?;
+                 let md = self.ta(a);
+-                let (idx, rest, re) = self.s_indices(ind, m, md, ea)?;
+-                let q = self.rec_pi(rest, "motive major")?;
+-                let iapp = self.ind_app(ind, m, &idx)?;
+-                if !self.sx_eq(Sx::T(self.ta(q), re, 0), Sx::V(iapp))? {
+-                    return reject("recursor type: motive major type mismatch");
+-                }
+-                let x = self.fresh(iapp)?;
+-                let re = self.push_env(x, re);
+-                let s = self.mk(Val::Sort(elim_level))?;
+-                if !self.sx_eq(Sx::T(self.tb(q), re, 0), Sx::V(s))? {
+-                    return reject("recursor type: motive must return the elimination universe");
++                let r = self.rec_motive(ind, m, md, ea, elim_level);
++                if m >= nreal && r == Err(Stop::Reject) {
++                    // Z04-9 fix (F06 fix-068 extended from the count to the order): the motives of the auxiliary
++                    // types follow the order in which Lean's elim_nested_inductive met the nested occurrences.
++                    // gruszka re-implements that search; when its auxiliary list differs from the export's in
++                    // order or shape (the count was already compared: numNested), its model, not the export, may
++                    // be wrong. Lean 4.36 replay compares every recursor with the one its own kernel generates,
++                    // so this is a decline (veto, never an accept), not a kernel verdict
++                    let msg = stop_msg();
++                    return decline(format!(
++                        "auxiliary type {} of the nested block: {msg} (gruszka's nested-occurrence model differs from the export's order; not compared as a kernel verdict)",
++                        m - nreal + 1
++                    ));
+                 }
++                r?;
+                 doms.push((md, ea));
+                 let mty = self.thunk(md, ea, 0)?;
+                 let cv = self.fresh(mty)?;
+@@ -1376,6 +1395,25 @@
+         }
+         Ok(())
+     }
++
++    /// The motive binder domain `md` (in `ea`) of block type `m`: the index
++    /// binders, the major premise `T pargs indices`, and the elimination
++    /// universe as result.
++    fn rec_motive(&mut self, ind: &Ind, m: usize, md: u32, ea: u32, elim_level: u32) -> R<()> {
++        let (idx, rest, re) = self.s_indices(ind, m, md, ea)?;
++        let q = self.rec_pi(rest, "motive major")?;
++        let iapp = self.ind_app(ind, m, &idx)?;
++        if !self.sx_eq(Sx::T(self.ta(q), re, 0), Sx::V(iapp))? {
++            return reject("recursor type: motive major type mismatch");
++        }
++        let x = self.fresh(iapp)?;
++        let re = self.push_env(x, re);
++        let s = self.mk(Val::Sort(elim_level))?;
++        if !self.sx_eq(Sx::T(self.tb(q), re, 0), Sx::V(s))? {
++            return reject("recursor type: motive must return the elimination universe");
++        }
++        Ok(())
++    }
+ 
+     /// The Pi term `a` (the file's recursor type is never reduced).
+     fn rec_pi(&self, a: u32, what: &str) -> R<u32> {

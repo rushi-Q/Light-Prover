@@ -1,0 +1,9 @@
+# 055: valid nested inductive through a type-constructor parameter: official ACCEPTS
+main | Challenge.export | Main.export        | cfg.json | 0 | plain
+V1   | Challenge.export | variants/V1.export | cfg.json | 0 | plain
+V2   | Challenge.export | variants/V2.export | cfg.json | 0 | plain
+V3   | Challenge.export | variants/V3.export | cfg.json | 0 | plain
+V7   | Challenge.export | variants/V7.export | cfg.json | 0 | plain
+G1   | Challenge.export | variants/G1.export | cfg.json | 0 | plain
+G2   | Challenge.export | variants/G2.export | cfg.json | 0 | plain
+G3   | Challenge.export | variants/G3.export | cfg.json | 0 | plain

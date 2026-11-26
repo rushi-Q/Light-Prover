@@ -1,0 +1,15 @@
+name = "mini"
+srcDir = "src"
+defaultTargets = ["Main"]
+# same leanOptions as the RH lakefile, but NO moreLeanArgs (Lean's default task stack = 1 GB)
+
+[leanOptions]
+autoImplicit = false
+relaxedAutoImplicit = false
+maxSynthPendingDepth = 3
+pp.unicode.fun = true
+maxHeartbeats = 4000000
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]

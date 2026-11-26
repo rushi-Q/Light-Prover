@@ -1,0 +1,14 @@
+name = "exedep"
+defaultTargets = ["Solution", "hello"]
+
+[[require]]
+name = "batteries"
+git = "https://github.com/leanprover-community/batteries"
+rev = "main"
+
+[[lean_lib]]
+name = "Solution"
+
+[[lean_exe]]
+name = "hello"
+root = "Main"

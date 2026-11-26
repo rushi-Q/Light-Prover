@@ -1,0 +1,15 @@
+diff --color -ru pnt/PrimeNumberTheoremAnd/MediumPNT.lean pnt-m2-axiom/PrimeNumberTheoremAnd/MediumPNT.lean
+--- pnt/PrimeNumberTheoremAnd/MediumPNT.lean
++++ pnt-m2-axiom/PrimeNumberTheoremAnd/MediumPNT.lean
+@@ -3490,8 +3490,10 @@
+     · bound
+     · apply min_le_right
+ 
++axiom LogDerivZetaBoundedAndHolo99_ax : LogDerivZetaBoundedAndHoloGenProp 9 9
++
+ lemma LogDerivZetaBoundedAndHolo99 : LogDerivZetaBoundedAndHoloGenProp 9 9 := by
+-  exact LogDerivZetaBoundedAndHoloGen LogDerivZetaBndUnif99 LogDerivZetaHolcLargeT9
++  exact LogDerivZetaBoundedAndHolo99_ax
+ 
+ lemma MellinOfSmooth1cExplicit {ν : ℝ → ℝ} (diffν : ContDiff ℝ 1 ν)
+     (suppν : ν.support ⊆ Icc (1 / 2) 2)

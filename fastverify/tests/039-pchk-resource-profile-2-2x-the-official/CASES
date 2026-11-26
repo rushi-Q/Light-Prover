@@ -1,0 +1,6 @@
+# name | challenge | solution | config | official_rc | mode | env   (039: resource profile; verdicts must be unchanged; official runs take ~6 min -> recorded)
+rhmid-control     | /scratch/bench-inputs/rh-mid/challenge/challenge.export | /scratch/bench-inputs/rh-mid/ref/solution.export | /scratch/bench-inputs/rh-mid/challenge/comparator.nanoda.json | 0* | plain
+# official verdicts of the late-sparse file measured live (tests/lib/official-check.sh): with nanoda
+# the OFFICIAL comparator REJECTS (official nanoda exits 2 on the sparse name index), Lean kernel only ACCEPTS
+rhmid-late-sparse | /scratch/bench-inputs/rh-mid/challenge/challenge.export | - | /scratch/bench-inputs/rh-mid/challenge/comparator.nanoda.json | 1* | gen:../gen-late.sh
+rhmid-late-sparse-leanonly | /scratch/bench-inputs/rh-mid/challenge/challenge.export | - | /scratch/bench-inputs/rh-mid/challenge/comparator.leanonly.json | 0* | gen:../gen-late.sh

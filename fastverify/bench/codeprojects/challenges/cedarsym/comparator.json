@@ -1,0 +1,16 @@
+{
+ "challenge_module": "Challenge",
+ "solution_module": "SymCC",
+ "theorem_names": [
+  "Cedar.Thm.verifyNeverErrors_is_sound",
+  "Cedar.Thm.verifyNeverErrors_is_complete",
+  "Cedar.Thm.verifyAlwaysMatches_is_sound",
+  "Cedar.Thm.verifyAlwaysMatches_is_complete"
+ ],
+ "definition_names": [],
+ "permitted_axioms": [
+  "propext",
+  "Quot.sound",
+  "Classical.choice"
+ ]
+}

@@ -1,0 +1,38 @@
+-- F24 sandbox probe (build-time IO). Prints PROBE lines into the build log; leaves a detached process behind.
+def probeWrite (p : String) : IO Unit := do
+  try
+    IO.FS.writeFile p "v03 probe\n"
+    IO.println s!"PROBE write OK   {p}"
+  catch e => IO.println s!"PROBE write FAIL {p}: {e}"
+
+def probeRead (p : String) : IO Unit := do
+  try
+    let s ← IO.FS.readFile p
+    IO.println s!"PROBE read OK    {p} ({s.length} chars)"
+  catch e => IO.println s!"PROBE read FAIL  {p}: {e}"
+
+def probeCmd (cmd : String) (args : Array String) : IO Unit := do
+  try
+    let o ← IO.Process.output { cmd := cmd, args := args }
+    IO.println s!"PROBE cmd rc={o.exitCode} {cmd} {args}: {o.stdout.take 300} {o.stderr.take 200}"
+  catch e => IO.println s!"PROBE cmd FAIL {cmd} {args}: {e}"
+
+#eval show IO Unit from do
+  IO.println s!"PROBE cwd {← IO.currentDir}"
+  probeCmd "sh" #["-c", "id; hostname; echo PID=$$; cat /proc/1/cmdline | tr '\\0' ' '; echo; env | sort | head -40"]
+  probeCmd "sh" #["-c", "ls -la /dev/shm /scratch 2>&1 | head -20; mount | grep -v proc | head -30"]
+  for p in ["/dev/shm/fvprobe", "/scratch/fvprobe", "/scratch/fvprobe-dir/fvprobe", "/tmp/fvprobe",
+            "$HOME/fvprobe", "../fvprobe", "../../fvprobe", "../../../fvprobe",
+            "/scratch/fastverify-next/fvprobe", "$LIGHT_LEAN/fastverify/fvprobe"] do
+    probeWrite p
+  for p in ["$LIGHT_LEAN/README.md", "/etc/passwd", "../result.json", "../../result.json"] do
+    probeRead p
+  probeCmd "sh" #["-c", "getent hosts example.com; (exec 3<>/dev/tcp/1.1.1.1/53 && echo TCP-OPEN) 2>&1 | head -2"]
+  -- detached process: does it outlive this module / the build stage?
+  let cfg : IO.Process.SpawnArgs := { cmd := "setsid", args := #["sh", "-c", "for i in $(seq 1 240); do date +%s.%N >> .lake/LINGER_LOG; sleep 5; done"], stdin := .null, stdout := .null, stderr := .null }
+  let _ ← IO.Process.spawn cfg
+  IO.println "PROBE spawned detached lingerer"
+
+theorem t_false : False := sorry
+theorem t_one_eq_two : (1 : Nat) = 2 := sorry
+theorem t_secret : secret = 8 := sorry

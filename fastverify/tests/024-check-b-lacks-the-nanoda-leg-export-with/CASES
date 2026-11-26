@@ -1,0 +1,3 @@
+# 024: duplicate expression node -> official nanoda panics -> official REJECTS; fast must reject or decline
+control      | challenge.export | solution.export        | comparator.json | 0 | plain
+dupexpr      | challenge.export | solution-dupexpr.export | comparator.json | 1 | plain

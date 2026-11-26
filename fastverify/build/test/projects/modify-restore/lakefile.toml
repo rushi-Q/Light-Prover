@@ -1,0 +1,7 @@
+name = "modrestore"
+srcDir = "src"
+defaultTargets = ["T"]
+
+[[lean_lib]]
+name = "T"
+roots = ["A", "B", "C"]

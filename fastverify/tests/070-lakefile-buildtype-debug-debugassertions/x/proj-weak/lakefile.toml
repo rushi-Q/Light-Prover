@@ -1,0 +1,9 @@
+name = "mini"
+srcDir = "src"
+weakLeanArgs = ["-DautoImplicit=true"]
+moreLeanArgs = ["-DautoImplicit=false"]
+defaultTargets = ["Main"]
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]

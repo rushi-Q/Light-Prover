@@ -1,0 +1,12 @@
+{
+ "challenge_module": "Chal.Spec",
+ "solution_module": "Sol.Main",
+ "theorem_names": [
+  "foo"
+ ],
+ "permitted_axioms": [
+  "propext",
+  "Quot.sound",
+  "Classical.choice"
+ ]
+}

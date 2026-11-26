@@ -1,0 +1,7 @@
+{
+ "challenge_module": "Challenge",
+ "solution_module": "T.S2",
+ "theorem_names": ["S2.s2"],
+ "definition_names": [],
+ "permitted_axioms": ["propext", "Quot.sound", "Classical.choice"]
+}

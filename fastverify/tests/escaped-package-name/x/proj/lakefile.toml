@@ -1,0 +1,10 @@
+name = "escproj"
+defaultTargets = ["Solution"]
+
+[[require]]
+name = "my-dep"
+git = "@DEP@"
+rev = "main"
+
+[[lean_lib]]
+name = "Solution"

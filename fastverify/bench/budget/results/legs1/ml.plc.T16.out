@@ -1,0 +1,26 @@
+[pchk] read 18999 ms, markPersistent 125 ms
+[pchk] parse 19125 ms, 707508 constants
+[pchk 4378 ms] remaining built, 707505 constants
+[pchk 8474 ms] deps done
+[pchk 13657 ms] walk 1 done, 691124 jobs
+[pchk 13696 ms] inductives learned, 2894 blocks differ from the export
+[pchk 27771 ms] walk 2 done, 691124 jobs
+[pchk 267367 ms] checks done
+[pchk 267367 ms] workers finished between 262219 and 267365 ms; longest job 85152 ms (localCohomology.diagramComp, walk index 186397 of 691124)
+[pchk-slow] 85152 ms start 75793 ms walk index 186397 localCohomology.diagramComp
+[pchk-slow] 49991 ms start 88592 ms walk index 210589 PresheafOfModules.freeObj._proof_2
+[pchk-slow] 49884 ms start 199942 ms walk index 480163 AlgebraicGeometry.Proj.awayι_comp_map
+[pchk-slow] 44882 ms start 172408 ms walk index 410828 Polynomial.iterate_derivative_derivative_mul_X
+[pchk-slow] 28034 ms start 224585 ms walk index 549966 PadicInt.coe_adicCompletionIntegersEquiv_apply
+[pchk-slow] 27615 ms start 69799 ms walk index 171105 CategoryTheory.instIsIsoIndCoimageImageComparison
+[pchk-slow] 18684 ms start 236893 ms walk index 472612 CategoryTheory.GrothendieckTopology.MayerVietorisSquare.sequenceIso._proof_5
+[pchk-slow] 17901 ms start 196343 ms walk index 472609 CategoryTheory.GrothendieckTopology.MayerVietorisSquare.mk₀_f_comp_biprodAddEquiv_symm_biprodIsoProd_hom
+[pchk-slow] 15926 ms start 190290 ms walk index 457640 CategoryTheory.GrothendieckTopology.MayerVietorisSquare.sequenceIso._proof_4
+[pchk-slow] 14673 ms start 214244 ms walk index 472610 CategoryTheory.GrothendieckTopology.MayerVietorisSquare.sequenceIso._proof_2
+[pchk-slow] 13393 ms start 158960 ms walk index 375129 CategoryTheory.GrothendieckTopology.MayerVietorisSquare.biprodAddEquiv_symm_biprodIsoProd_hom_toBiprod_apply
+[pchk-slow] 13272 ms start 172356 ms walk index 375131 CategoryTheory.GrothendieckTopology.MayerVietorisSquare.sequenceIso._proof_1
+[pchk-slow] 11517 ms start 69680 ms walk index 163142 AlgebraicGeometry.Proj.sheafedSpaceMap._proof_1
+[pchk-slow] 10313 ms start 196149 ms walk index 472226 AlgebraicGeometry.spread_out_unique_of_isGermInjective
+[pchk] replay done at 288259 ms
+Lean default kernel accepts the solution
+{"name":"lg-ml.plc.T16","limits":{"memory_max":"max","memory_high":"max","swap_max":"0","cpus":"136-151","cpu_quota_pct":""},"exit":0,"wall_s":288.910644365,"memory_peak":11717914624,"sampled_max":{"current":11560173568,"anon":11407446016,"file":24576,"shmem":0},"memory_events":{"low":0,"high":0,"max":0,"oom":0,"oom_kill":0,"oom_group_kill":0,"sock_throttled":0},"cpu_stat":{"usage_usec":3075915185,"user_usec":3032230318,"system_usec":43684867,"nice_usec":0,"core_sched.force_idle_usec":0,"nr_periods":0,"nr_throttled":0,"throttled_usec":0,"nr_bursts":0,"burst_usec":0},"pids_peak":44,"host":"host1","cmd":["env", "-i", "PATH=/usr/bin:/bin", "LANG=C.UTF-8", "LEAN_ABORT_ON_PANIC=1", "PCHK_SLOW_MS=10000", "LEAN_STACK_SIZE_KB=917376", "LEAN_NUM_THREADS=16", "/scratch/fastverify-next/checkS/s03h/pleanchecker", "-j16", "-v", "/scratch/bench-inputs/mathlib/solution.export"]}

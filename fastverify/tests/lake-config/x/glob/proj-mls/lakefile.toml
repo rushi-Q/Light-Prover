@@ -1,0 +1,9 @@
+name = "mini"
+description = """
+A small test package.
+Multi-line basic strings are valid TOML."""
+srcDir = "src"
+defaultTargets = ["Main"]
+
+[[lean_lib]]
+name = "Main"

@@ -1,0 +1,5 @@
+name = "shpchallenge"
+defaultTargets = ["Challenge"]
+
+[[lean_lib]]
+name = "Challenge"

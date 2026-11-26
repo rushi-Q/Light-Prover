@@ -1,0 +1,5 @@
+{"comment": "pleanchecker_incr candidate 78f43e2b (plain --from-export mode) + gruszka 3eb3aadd, flags as check-sound.sh",
+ "lean": {"argv": ["/scratch/bench-inputs/leanleg-candidates/pleanchecker-incr", "-j{threads}", "-v", "--from-export", "{export}"],
+          "env": {"LEAN_ABORT_ON_PANIC": "1", "LEAN_NUM_THREADS": "{threads}", "LEAN_STACK_SIZE_KB": "917376", "PCHK_SLOW_MS": "10000"}},
+ "k2": {"argv": ["/scratch/fastverify-next/checkB/portable-v1/gruszka", "{export}", "{threads}"], "env": {}},
+ "ro": ["/scratch/bench-inputs/leanleg-candidates", "/scratch/fastverify-next", "$ELAN_HOME/toolchains/leanprover--lean4---v4.36.0"]}

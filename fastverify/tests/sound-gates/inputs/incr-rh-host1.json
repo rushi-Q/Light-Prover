@@ -1,0 +1,8 @@
+{"incr_server": "$LIGHT_LEAN/fastverify/overlap/incr-server.sh",
+ "incr_threads": 96,
+ "incr_cases": [
+  {"name": "RH-snap-honest-final-M2", "snaps": ["/scratch/sound-gates-work/rh/solution.export"], "final": "/scratch/sound-gates-work/rh-mut/M2.export",
+   "challenge": "$LIGHT_LEAN/verify/challenge/challenge.export", "config": "$LIGHT_LEAN/verify/challenge/comparator.json", "expect": "REJECTED"},
+  {"name": "RH-snap-M2-final-honest", "snaps": ["/scratch/sound-gates-work/rh-mut/M2.export"], "final": "/scratch/sound-gates-work/rh/solution.export",
+   "challenge": "$LIGHT_LEAN/verify/challenge/challenge.export", "config": "$LIGHT_LEAN/verify/challenge/comparator.json", "expect": "ACCEPTED"}
+ ]}

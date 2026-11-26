@@ -1,0 +1,29 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: cargo test --release --locked
+        env:
+          # init-prelude is in the repository: fail if it is missing
+          SUSZ_REQUIRE_CORPORA: "1"
+      - run: cargo test --release --locked --features mmap
+        env:
+          SUSZ_REQUIRE_CORPORA: "1"
+      - run: cargo clippy --release --locked --all-targets
+      - run: cargo clippy --release --locked --all-targets --features mmap
+  msrv:
+    # The oldest Rust that rust-version in Cargo.toml promises.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+      - run: cargo build --release --locked
+      - run: cargo build --release --locked --features mmap

@@ -1,0 +1,1 @@
+{"challenge_module": "Challenge", "solution_module": "Main", "theorem_names": ["fvSelfTest"], "definition_names": [], "permitted_axioms": ["propext", "Quot.sound", "Classical.choice"], "external_kernels": {"noda-threads-probe": ["/bin/sh", "-c", "grep -q \"\\\"num_threads\\\":4\" \"$1\"", "sh"]}}

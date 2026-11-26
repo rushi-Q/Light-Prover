@@ -1,0 +1,13 @@
+name = "tiny"
+defaultTargets = ["Tiny", "Solution", "Extra"]
+
+[[lean_lib]]
+name = "Tiny"
+globs = ["Tiny.+"]
+
+[[lean_lib]]
+name = "Solution"
+
+[[lean_lib]]
+name = "Extra"
+globs = ["Extra.+"]

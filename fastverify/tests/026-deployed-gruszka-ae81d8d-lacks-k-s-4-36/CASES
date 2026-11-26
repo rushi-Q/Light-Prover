@@ -1,0 +1,5 @@
+# 026: inductives that Lean 4.36 rejects (4.36-conformance tests) -> every fast check must reject or decline
+control-honest | Challenge.export | Main.export             | cfg.json | 0 | plain
+nonuniform     | Challenge.export | sol_nonuniform.export   | cfg.json | 1 | plain
+nestedprefix   | Challenge.export | sol_nestedprefix.export | cfg.json | 1 | plain
+headredex      | Challenge.export | sol_headredex.export    | cfg.json | 1 | plain

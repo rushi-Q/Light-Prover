@@ -1,0 +1,7 @@
+name = "t3"
+srcDir = "src"
+defaultTargets = ["T3"]
+
+[[lean_lib]]
+name = "T3"
+roots = ["A", "B"]

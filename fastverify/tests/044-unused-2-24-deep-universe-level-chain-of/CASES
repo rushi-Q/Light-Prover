@@ -1,0 +1,8 @@
+# 044: unused 2^24-deep level chain -> official export parser panics (REJECT); depth 2^24-2: Lean kernel accepts but official
+# nanoda panics (parser.rs:105) -> official comparator with nanoda REJECTS too (live run; the recorded repro.out agrees); bvar >= 2^20-1
+control-honest | Challenge.export | Main.export          | cfg.json | 0 | plain
+depth-2^24     | Challenge.export | -                    | cfg.json | 1 | gen:../gen-depth.sh
+depth-2^24-2   | Challenge.export | -                    | cfg.json | 1 | gen:../gen-depth-ok.sh
+bvar-2^20      | Challenge.export | sol_bvar2p20.export  | cfg.json | 1 | plain
+depth-2^24-lean   | Challenge.export | - | ../cfg-leanonly.json | 1 | gen:../gen-depth.sh
+depth-2^24-2-lean | Challenge.export | - | ../cfg-leanonly.json | 0 | gen:../gen-depth-ok.sh

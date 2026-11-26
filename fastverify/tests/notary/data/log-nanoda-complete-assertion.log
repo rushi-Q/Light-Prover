@@ -1,0 +1,2 @@
+thread 'thread_2' (7) panicked at src/inductive.rs:956:9:
+assertion failed: self.is_valid_ind_app(st, parent_ind_name, ctor_type_cursor)

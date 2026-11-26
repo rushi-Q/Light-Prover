@@ -1,0 +1,1 @@
+{"challenge_module":"Chal","solution_module":"NestedBfsReject","theorem_names":["goal"],"definition_names":[],"permitted_axioms":["propext","Quot.sound","Classical.choice"]}

@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "comment": "Pinned binaries of fast check B (sources, patches and build commands: check/checkB/PROVENANCE.md). bin_dir is the default location on every node; --bin DIR may point elsewhere but the sha256 values below are always enforced.",
+  "bin_dir": "/scratch/fastverify-next/checkB/v4",
+  "sha256": {
+    "gruszka": "7634f2fe0d2ea625a3c68c9866a71a44691eeb1ea990f4d4e1142da7c0c896db",
+    "kcompare": "b2db231b9e8eaf35a3dca3825816b672d020352c9a98e58c4f4d36b940c056ec",
+    "nl-fast": "b224c7ddb1e8d678d7c8d77ec01cf8b0885c7531207b5c186653207d890ebf4b"
+  },
+  "version": "v4: v3 + kcompare patch 02 (definition_names = Lean 4.36 definition holes); gruszka, nl-fast byte-identical to v3"
+}

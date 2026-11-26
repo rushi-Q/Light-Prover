@@ -1,0 +1,24 @@
+--- orig/k/src/kernel/type_checker.cpp
++++ fixed/k/src/kernel/type_checker.cpp
+@@ -310,14 +310,18 @@
+            on its binder). Instantiating just that domain with all of them at once yields the same
+            expression. Proofs of propositions (`is_prop_type`) take the stock path, which checks
+            the fields' types on the way. */
+-        unsigned n = nparams + idx;
++        /* fix for finding 003: compute nparams + idx without unsigned wrap-around; if it does not fit, the
++           structure cannot have that many binders, so skip the fast path (the stock path below rejects). */
++        uint64 n64 = static_cast<uint64>(nparams) + static_cast<uint64>(idx);
++        unsigned n = n64 > std::numeric_limits<unsigned>::max() ? std::numeric_limits<unsigned>::max() : static_cast<unsigned>(n64);
++        bool fits = n64 <= std::numeric_limits<unsigned>::max();
+         expr const * it = &r;
+         unsigned i = 0;
+-        while (is_pi(*it) && i < n) {
++        while (fits && is_pi(*it) && i < n) {
+             it = &binding_body(*it);
+             i++;
+         }
+-        if (i == n && is_pi(*it)) {
++        if (fits && i == n && is_pi(*it)) {
+             bool is_prop_type = is_prop(type);
+             if (!is_prop_type) {
+                 buffer<expr> subst;

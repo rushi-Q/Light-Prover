@@ -1,0 +1,40 @@
+--- official-build.sh.orig
++++ official-build.sh
+@@ -32,6 +32,11 @@
+       args+=(--ro-bind "$src" "$dst")
+     done < "$binds"
+   fi
++  # Lake sizes its job pool by the HOST's hardware concurrency, not by the cgroup / affinity CPU set:
++  # inside a 4-CPU scope on a 224-thread node the 4.33.1 `lake build` ran 103 `lean` processes at once (44 GB in 150 s).
++  # LEAN_NUM_THREADS bounds the pool (and every `lean`'s own thread pool) to --threads, default = the CPU set's size
++  # (nproc), so an unlimited host is unchanged. Outputs do not depend on the thread count.
++  [ -n "${THREADS:-}" ] && args+=(--setenv LEAN_NUM_THREADS "$THREADS")
+   args+=(--setenv PATH "$tc/bin:/usr/bin:/bin" --setenv HOME /tmp/home --setenv LANG C.UTF-8
+          --unshare-all --die-with-parent --new-session --chdir "${proj:-/}")
+   env -i /usr/bin/bwrap "${args[@]}" -- "$@"
+@@ -67,10 +72,11 @@
+ 
+ [ $# -ge 3 ] || { sed -n 2,4p "$0" >&2; exit 2; }
+ PROJ=$(readlink -f "$1"); WS=$2; TC=$(readlink -f "$3"); shift 3
+-JSON=; LPOUT=; LOG=; TIMEOUT=0
++JSON=; LPOUT=; LOG=; TIMEOUT=0; THREADS=
+ while [ $# -gt 0 ]; do
+   case "$1" in
+-    --threads) shift 2 ;;   # lake build has no job option; the CPU set (cgroup/affinity) bounds its parallelism
++    --threads) case "${2:-}" in ''|0|*[!0-9]*) echo "official-build: --threads needs a positive integer" >&2; exit 2 ;; esac
++               THREADS=$2; shift 2 ;;   # becomes LEAN_NUM_THREADS inside the sandbox (lake has no job option)
+     --json) JSON=$2; shift 2 ;;
+     --lean-path-out) LPOUT=$2; shift 2 ;;
+     --log) LOG=$2; shift 2 ;;
+@@ -78,6 +84,11 @@
+     *) echo "official-build: unknown argument $1" >&2; exit 2 ;;
+   esac
+ done
++# without --threads the bound is the CPU set this build may use (nproc honours cgroup cpusets and affinity;
++# on an unlimited host it is the host's thread count, i.e. Lake's own default).
++[ -n "$THREADS" ] || THREADS=$(nproc 2>/dev/null || true)
++case "$THREADS" in ''|0|*[!0-9]*) THREADS= ;; esac
++export THREADS   # the build runs sandbox() in a child bash (declare -f carries the function, not the variables)
+ [ -n "$LOG" ] || LOG=$PROJ/../log
+ mkdir -p "$LOG"; LOG=$(readlink -f "$LOG")
+ T0=$(date +%s.%N)

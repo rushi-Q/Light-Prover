@@ -1,0 +1,3 @@
+# name | sources (x/) | lean flags | roots | targets      008: projection index 2^32+1 in an olean of a skipKernelTC build
+control-challenge | proj/Challenge.lean | | Challenge | @rh
+proj-2^32+1-skipKernelTC | proj/Challenge.lean proj/Main.lean | -Ddebug.skipKernelTC=true | Main | @rh

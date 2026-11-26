@@ -1,0 +1,2 @@
+# 033: level metavariable in a stored proof (skipKernelTC build): the package must not write a different (invalid) export
+lmvar-skipKernelTC | proj/Challenge.lean proj/Main.lean | -Ddebug.skipKernelTC=true | Main | @rh

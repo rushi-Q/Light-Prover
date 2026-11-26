@@ -1,0 +1,2 @@
+# 018: Name.num component 2^64 (native core cannot represent it; must decline -> official, never a truncated export)
+name-2^64 | proj/N.lean | | N | main_thm

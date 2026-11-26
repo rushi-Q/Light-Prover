@@ -1,0 +1,34 @@
+{
+ "incr_server": "$LIGHT_LEAN/fastverify/tests/sound-gates/tools/incr-server-args.sh",
+ "incr_threads": 96,
+ "incr_cases": [
+  {
+   "name": "RH-T-snap-honest-final-M2",
+   "snaps": [
+    "/scratch/sound-gates-work/rh/solution.export"
+   ],
+   "final": "/scratch/sound-gates-work/rh-mut/M2.export",
+   "challenge": "$LIGHT_LEAN/verify/challenge/challenge.export",
+   "config": "$LIGHT_LEAN/verify/challenge/comparator.json",
+   "expect": "REJECTED",
+   "server_args": [
+    "--targeted=/scratch/sound-gates-work/targets/rh-targets.txt"
+   ],
+   "pre_final_sleep": 600
+  },
+  {
+   "name": "RH-T-snap-M2-final-honest",
+   "snaps": [
+    "/scratch/sound-gates-work/rh-mut/M2.export"
+   ],
+   "final": "/scratch/sound-gates-work/rh/solution.export",
+   "challenge": "$LIGHT_LEAN/verify/challenge/challenge.export",
+   "config": "$LIGHT_LEAN/verify/challenge/comparator.json",
+   "expect": "ACCEPTED",
+   "server_args": [
+    "--targeted=/scratch/sound-gates-work/targets/rh-targets.txt"
+   ],
+   "pre_final_sleep": 600
+  }
+ ]
+}

@@ -1,0 +1,91 @@
+# file	reader (SAME|REFUSE)	gate with config.json (OK|DECLINED)	note
+ordinary.ndjson	SAME	OK	
+spaces.ndjson	SAME	OK	
+crlf.ndjson	SAME	OK	
+final-no-lf.ndjson	SAME	OK	
+order.ndjson	SAME	OK	
+no-items.ndjson	SAME	OK	
+quoted-escapes.ndjson	SAME	OK	
+astral.ndjson	SAME	OK	
+escaped-bmp.ndjson	SAME	OK	
+raw-astral.ndjson	SAME	OK	
+surrogate-high.ndjson	REFUSE	DECLINED	conservative: lone surrogate escape (Lean: U+FFFD)
+surrogate-low.ndjson	REFUSE	DECLINED	conservative: lone surrogate escape (Lean: U+FFFD)
+invalid-utf8.ndjson	REFUSE	DECLINED	conservative: non-UTF-8 (Lean: lossy conversion)
+raw-nul.ndjson	REFUSE	DECLINED	official error: Invalid JSON: offset 32: unexpected character in string
+illegal-escape.ndjson	REFUSE	DECLINED	official error: Invalid JSON: offset 32: illegal \u escape
+exponent.ndjson	REFUSE	DECLINED	official error: Name not found 1
+exp-zero.ndjson	REFUSE	DECLINED	conservative: exponent token (r3 item 1)
+fraction.ndjson	REFUSE	DECLINED	official error: Unknown export object with keys [in, str]
+leading-zero.ndjson	REFUSE	DECLINED	official error: Invalid JSON: offset 8: unexpected character in object
+negative.ndjson	REFUSE	DECLINED	official error: Unknown export object with keys [in, str]
+bool.ndjson	REFUSE	DECLINED	official error: Unknown export object with keys [in, str]
+null.ndjson	REFUSE	DECLINED	official error: Unknown export object with keys [in, str]
+string-index.ndjson	REFUSE	DECLINED	official error: Unknown export object with keys [in, str]
+nan.ndjson	REFUSE	DECLINED	official error: Invalid JSON: offset 6: unexpected input
+infinity.ndjson	REFUSE	DECLINED	official error: Invalid JSON: offset 6: unexpected input
+neg-zero.ndjson	SAME	OK	
+exponent-as-component.ndjson	REFUSE	DECLINED	conservative: exponent token (r3 item 1)
+uint64-plus-one.ndjson	SAME	OK	
+duplicate-key.ndjson	REFUSE	DECLINED	official error: Invalid JSON: offset 33: duplicate object key "pre"
+duplicate-decl.ndjson	REFUSE	DECLINED	official error: Duplicate declaration: A
+outer-extra.ndjson	REFUSE	DECLINED	official error: Unknown export object with keys [extra, ie, sort]
+inner-extra.ndjson	SAME	OK	
+decimal-precision.ndjson	REFUSE	DECLINED	conservative: fraction token (r3 item 1; Python would round)
+finite-exponent.ndjson	REFUSE	DECLINED	conservative: exponent token (r3 item 1; Python would give inf)
+natural-separators.ndjson	SAME	OK	
+opaque-default.ndjson	SAME	OK	
+nested-8.ndjson	SAME	OK	
+nested-1100.ndjson	REFUSE	DECLINED	conservative: JSON nesting beyond the reader's fixed bound 512 (r3.3; interpreter-independent)
+missing-name.ndjson	REFUSE	DECLINED	official error: axiomInfo invalid
+unsafe-number.ndjson	REFUSE	DECLINED	official error: axiomInfo invalid
+forward-ref.ndjson	REFUSE	DECLINED	official error: Expr not found 0
+sparse-name.ndjson	REFUSE	DECLINED	conservative: non-dense indices
+sparse-level.ndjson	REFUSE	DECLINED	conservative: non-dense indices
+sparse-expr.ndjson	REFUSE	DECLINED	conservative: non-dense indices
+trailing-garbage.ndjson	REFUSE	DECLINED	official error: Invalid JSON: offset 17: expected end of input
+second-value.ndjson	REFUSE	DECLINED	official error: Invalid JSON: offset 18: expected end of input
+blank.ndjson	REFUSE	DECLINED	official error: Invalid JSON: offset 1: unexpected end of input
+vt.ndjson	REFUSE	DECLINED	official error: Invalid JSON: offset 0: unexpected input
+body-bom.ndjson	REFUSE	DECLINED	official error: Invalid JSON: offset 0: unexpected input
+meta-bom.ndjson	SAME	DECLINED	body read exactly; the gate refuses the meta line (release identity)
+meta-blank.ndjson	SAME	DECLINED	body read exactly; the gate refuses the meta line (release identity)
+meta-extra.ndjson	SAME	DECLINED	body read exactly; the gate refuses the meta line (release identity)
+meta-duplicate.ndjson	SAME	DECLINED	body read exactly; the gate refuses the meta line (release identity)
+meta-missing.ndjson	SAME	DECLINED	body read exactly; the gate refuses the meta line (release identity)
+meta-array.ndjson	SAME	DECLINED	body read exactly; the gate refuses the meta line (release identity)
+empty.ndjson	REFUSE	DECLINED	conservative: no meta line (empty file)
+meta-reordered.ndjson	SAME	OK	
+literal-line-1MiB.ndjson	SAME	OK	
+many-lines.ndjson	SAME	OK	
+digits-v4.36.0.ndjson	SAME	OK	
+digits-v4.37.0-rc1.ndjson	SAME	OK	
+Challenge.export	SAME	OK	
+r3-natval-1_000.ndjson	SAME	OK	
+r3-natval-0.ndjson	SAME	OK	
+r3-natval-007.ndjson	SAME	OK	
+r3-natval-12_34_56.ndjson	SAME	OK	
+r3-natval-empty.ndjson	REFUSE	DECLINED	official error: Expr.lit natVal invalid
+r3-natval-lead-us.ndjson	REFUSE	DECLINED	official error: Expr.lit natVal invalid
+r3-natval-trail-us.ndjson	REFUSE	DECLINED	official error: Expr.lit natVal invalid
+r3-natval-double-us.ndjson	REFUSE	DECLINED	official error: Expr.lit natVal invalid
+r3-natval-minus.ndjson	REFUSE	DECLINED	official error: Expr.lit natVal invalid
+r3-natval-plus.ndjson	REFUSE	DECLINED	official error: Expr.lit natVal invalid
+r3-natval-space.ndjson	REFUSE	DECLINED	official error: Expr.lit natVal invalid
+r3-natval-hex.ndjson	REFUSE	DECLINED	official error: Expr.lit natVal invalid
+r3-natval-fullwidth.ndjson	REFUSE	DECLINED	official error: Expr.lit natVal invalid
+r3-natval-arabic.ndjson	REFUSE	DECLINED	official error: Expr.lit natVal invalid
+r3-natval-exp.ndjson	REFUSE	DECLINED	official error: Expr.lit natVal invalid
+r3-natval-frac.ndjson	REFUSE	DECLINED	official error: Expr.lit natVal invalid
+r3-bvar-compact-1048574.ndjson	SAME	OK	
+r3-bvar-spaced-1048574.ndjson	SAME	OK	
+r3-bvar-compact-1048575.ndjson	REFUSE	DECLINED	official abort: rc=1 INTERNAL PANIC: too many bound variables
+r3-bvar-spaced-1048575.ndjson	REFUSE	DECLINED	official abort: rc=1 INTERNAL PANIC: too many bound variables
+r3-bvar-compact-18446744073709551616.ndjson	REFUSE	DECLINED	official abort: rc=1 INTERNAL PANIC: too many bound variables
+r3-bvar-spaced-18446744073709551616.ndjson	REFUSE	DECLINED	official abort: rc=1 INTERNAL PANIC: too many bound variables
+r3-namenum-4301-digits.ndjson	SAME	OK	
+r3-namenum-20000-digits.ndjson	SAME	OK	
+r3-namenum-20001-digits.ndjson	REFUSE	DECLINED	conservative: integer token beyond the 20000-digit bound (r3 item 4)
+r3-bigint-ignored-5000.ndjson	SAME	OK	
+r3-negint-ignored.ndjson	SAME	OK	
+r3-exp-ignored-1e2.ndjson	REFUSE	DECLINED	conservative: exponent token (r3 item 1)

@@ -1,0 +1,21 @@
+{
+  "challenge_module": "Challenge",
+  "solution_module": "Main",
+  "theorem_names": [
+    "fvSelfTest"
+  ],
+  "definition_names": null,
+  "permitted_axioms": [
+    "propext",
+    "Quot.sound",
+    "Classical.choice"
+  ],
+  "enable_nanoda": null,
+  "external_kernels": {
+    "site checker": [
+      "/opt/lean-kernels/local-checker",
+      ""
+    ]
+  },
+  "comment": "\u03b1"
+}

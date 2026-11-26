@@ -1,0 +1,7 @@
+name = "fx"
+srcDir = "src"
+defaultTargets = ["FX"]
+
+[[lean_lib]]
+name = "FX"
+globs = ["FX.+"]

@@ -1,0 +1,2 @@
+# 010: string literal with invalid UTF-8 bytes (official build succeeds)
+invalid-utf8 | proj/Challenge.lean proj/Main.lean | | Main | @rh

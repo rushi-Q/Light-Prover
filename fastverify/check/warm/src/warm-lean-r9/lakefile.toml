@@ -1,0 +1,22 @@
+name = "warmcheck"
+defaultTargets = ["ccmp-warm", "pleanchecker-warm"]
+
+[[lean_lib]]
+name = "PChk"
+
+[[lean_lib]]
+name = "FastParse"
+
+[[lean_lib]]
+name = "ParAxioms"
+
+[[lean_lib]]
+name = "WarmBase"
+
+[[lean_exe]]
+name = "ccmp-warm"
+root = "CCmpWarm"
+
+[[lean_exe]]
+name = "pleanchecker-warm"
+root = "PLeanCheckerWarm"

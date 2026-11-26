@@ -1,0 +1,8 @@
+# 058: valid reflexive nested inductives: official ACCEPTS
+main | Challenge.export | Main.export        | cfg.json | 0 | plain
+R2   | Challenge.export | variants/R2.export | cfg.json | 0 | plain
+R3   | Challenge.export | variants/R3.export | cfg.json | 0 | plain
+R4   | Challenge.export | variants/R4.export | cfg.json | 0 | plain
+R5   | Challenge.export | variants/R5.export | cfg.json | 0 | plain
+C1   | Challenge.export | variants/C1.export | cfg.json | 0 | plain
+C2   | Challenge.export | variants/C2.export | cfg.json | 0 | plain

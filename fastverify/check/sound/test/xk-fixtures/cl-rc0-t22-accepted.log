@@ -1,0 +1,5 @@
+con-leche: stats: phases: parse 0.0s (index 0.0s), check 41.5s
+con-leche: stats: check pool: 41.505s wall, 4 workers, 507 records, busy 41.658s (25.0%); tail 41.453s after the last start, 4 busy then, 41.454s worker-time in it (25.0%)
+con-leche: stats: slowest checks: 41.503s theorem GlobalTheory.HSAmp.norm_aeval_trace_le (#81); 0.023s def Nat.lor (#430); 0.023s def Nat.xor (#432); 0.017s def Nat.land (#428); 0.016s def Nat.mod (#184)
+con-leche: stats: peak RSS 7.47 GiB
+con-leche: accepted 506 declarations (--verified)

@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "comment": "Pinned binaries of the low-memory export stage export-lowmem.sh (additive; existing export/components.json untouched). native = lean4export-lowmem (979c4f8 + the output-neutral LEAN4EXPORT_LOWMEM=1 memory patch, GLIBC_2.17). natives_other = per-release low-memory native exporters selected by lean --version (Lean 4.37.0-rc1: olean v4 / ConstTrie port + LEAN4EXPORT_LOWMEM=1). official = E0 fallback. closure_check = independent closure guard.",
+  "native": {
+    "path": "/scratch/fastverify-next/exporter-lowmem/v1/lean4export-lowmem",
+    "sha256": "a86e719879d88f189b6e58001deb0411426dedabcee6b4318883ba6b4caaecba",
+    "commit": "979c4f8+d15-lowmem",
+    "lean_version": "Lean (version 4.33.1, x86_64-unknown-linux-gnu, commit 819816b2e0a3bf405af45ae5c7af2491d8f5bee6, Release)",
+    "olean_githash": "819816b2e0a3bf405af45ae5c7af2491d8f5bee6"
+  },
+  "official": {
+    "path": "$LIGHT_LEAN/env/tools/lean4export/.lake/build/bin/lean4export",
+    "sha256": "805ab4cc6a88dcef109644d201c3142261f524aecaf58b04913a9f029e21e9b5"
+  },
+  "closure_check": {
+    "path": "/scratch/fastverify-next/exporter/closure_check-60b84139b18e",
+    "sha256": "60b84139b18e352ddcaf79e36e1c44d79e5636efe26dc3c47f6a727eac4211cc",
+    "source": "export/closure/closure_check.cpp (g++ -O2 -std=c++17 -pthread -static)"
+  },
+  "natives_other": [
+    {
+      "lean_version": "Lean (version 4.37.0-rc1, x86_64-unknown-linux-gnu, commit 0b77e12952ad39077d80d8bd6b66d601f225c321, Release)",
+      "path": "/scratch/fastverify-next/exporter-lowmem/v1/lean4export-lowmem-v4.37.0-rc1",
+      "sha256": "9c4ae13d05feb8028f250d78ca39692ffefdc10fbf19383ef036f0faaa770f1e",
+      "olean_githash": "0b77e12952ad39077d80d8bd6b66d601f225c321",
+      "source": "lean4export-native 979c4f8 + native-exporter-d22-v437.patch (olean v4, ModuleData ConstTrie, cached Name.hash, temp IR release) + patch_export_lowmem_437.py (LEAN4EXPORT_LOWMEM=1: 4 KB demand paging, MADV_DONTNEED via flen, sequential St dump + O_DIRECT sink), built with official v4.37.0-rc1 Lake",
+      "official": {
+        "path": "$TC/bin/leanexport",
+        "sha256": "4f5226680a15811444273975284fcb78cf7f8e6af7afa6312ab41a5b945b8542"
+      }
+    }
+  ]
+}

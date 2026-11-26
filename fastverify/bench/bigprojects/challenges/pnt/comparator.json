@@ -1,0 +1,8 @@
+{
+  "challenge_module": "Challenge",
+  "solution_module": "PrimeNumberTheoremAnd",
+  "theorem_names": ["MediumPNT", "StrongPNT", "WeakPNT''", "chebyshev_asymptotic", "pi_asymp", "prime_between",
+                    "sum_mobius_div_self_le"],
+  "definition_names": [],
+  "permitted_axioms": ["propext", "Quot.sound", "Classical.choice"]
+}

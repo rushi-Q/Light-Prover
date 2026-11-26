@@ -1,0 +1,28 @@
+diff --git a/Main.lean b/Main.lean
+index e2e3de2..1ee996c 100644
+--- a/Main.lean
++++ b/Main.lean
+@@ -196,6 +196,7 @@ unsafe def incremental (dir? : Option String) (silent verbose : Bool) (nthreads
+       | some raw =>
+         let l : String := (raw.trimAsciiEnd).toString
+         if raw.isEmpty then q := q.push ("", none)
++        else if l.isEmpty then pure ()   -- blank line: ignored (S06 attack test; only a real EOF closes the stream)
+         else if let some p := l.dropPrefix? "snap " then q := q.push (l, some (← startParse p.toString))
+         else q := q.push (l, none)
+       | none => more := false
+@@ -205,6 +206,7 @@ unsafe def incremental (dir? : Option String) (silent verbose : Bool) (nthreads
+         | none => pure ""
+       let l : String := (raw.trimAsciiEnd).toString
+       if raw.isEmpty then q := q.push ("", none)
++      else if l.isEmpty then pure ()   -- blank line: ignored (S06 attack test; only a real EOF closes the stream)
+       else if let some p := l.dropPrefix? "snap " then q := q.push (l, some (← startParse p.toString))
+       else q := q.push (l, none)
+       continue
+@@ -260,6 +262,7 @@ unsafe def incremental (dir? : Option String) (silent verbose : Bool) (nthreads
+               | some raw =>
+                 let l : String := (raw.trimAsciiEnd).toString
+                 if raw.isEmpty then q := q.push ("", none)
++                else if l.isEmpty then pure ()   -- blank line: ignored (S06 attack test; only a real EOF closes the stream)
+                 else if let some p := l.dropPrefix? "snap " then q := q.push (l, some (← startParse p.toString))
+                 else q := q.push (l, none)
+               | none => more2 := false

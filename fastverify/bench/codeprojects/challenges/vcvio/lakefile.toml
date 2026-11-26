@@ -1,0 +1,32 @@
+name = "challenge"
+defaultTargets = ["Challenge"]
+
+[leanOptions]
+pp.unicode.fun = true
+pp.proofs.withType = false
+autoImplicit = false
+relaxedAutoImplicit = false
+
+[[require]]
+name = "loom2"
+git = "https://github.com/quangvdao/loom2"
+rev = "2f65f311fae959c302586b07aa45390999b935d4"
+
+[[require]]
+name = "PolyFun"
+git = "https://github.com/Verified-zkEVM/PolyFun.git"
+rev = "bb7e1003544b8461e3d484fc51c61b2ff865250f"
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.33.1"
+
+[[lean_lib]]
+name = "Challenge"
+
+[[lean_lib]]
+name = "VCVio"
+
+[[lean_lib]]
+name = "ToMathlib"

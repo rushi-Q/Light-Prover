@@ -1,0 +1,1 @@
+theorem x : True := trivial

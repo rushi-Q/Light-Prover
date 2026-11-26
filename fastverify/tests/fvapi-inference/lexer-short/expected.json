@@ -1,0 +1,260 @@
+{
+ "d1": {
+  "lean": {
+   "4.33.1": "ERROR",
+   "4.36.0": "ERROR"
+  },
+  "want": [
+   "easy_thm"
+  ],
+  "note": "hard_thm is doc text; Lean then fails at `#check hard_thm` (file rejected anyway)"
+ },
+ "d3": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm"
+   ],
+   "4.36.0": [
+    "easy_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "#exit refused"
+ },
+ "d8": {
+  "lean": {
+   "4.33.1": "ERROR",
+   "4.36.0": [
+    "easy_thm",
+    "hard_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "comment after /-- (4.33.1 vs 4.36+) refused"
+ },
+ "dot1": {
+  "lean": {
+   "4.33.1": [
+    "Foo.theorem.sizeOf_spec",
+    "hard_thm"
+   ],
+   "4.36.0": [
+    "Foo.theorem.sizeOf_spec",
+    "hard_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "a command keyword after `.` (rawIdent) is refused (an earlier lexer skipped `.theorem`; `..theorem` defeated that)"
+ },
+ "e1": {
+  "lean": {
+   "4.33.1": [
+    "P.x",
+    "my_ext",
+    "my_ext_iff"
+   ],
+   "4.36.0": [
+    "P.x",
+    "my_ext",
+    "my_ext_iff"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "`ext` is not on the attribute allow-list (it declares my_ext_iff)"
+ },
+ "ed": {
+  "lean": {
+   "4.33.1": [
+    "Foo.mk.inj",
+    "Foo.mk.injEq",
+    "Foo.mk.sizeOf_spec",
+    "easy_thm",
+    "instNonemptyFoo"
+   ],
+   "4.36.0": [
+    "Foo.mk.inj",
+    "Foo.mk.injEq",
+    "Foo.mk.sizeOf_spec",
+    "easy_thm",
+    "instNonemptyFoo"
+   ]
+  },
+  "want": [
+   null,
+   "easy_thm"
+  ],
+  "note": "derived Nonempty instance (theorem instNonemptyFoo) counts without a name; Foo.mk.* dotted"
+ },
+ "ed2": {
+  "lean": {
+   "4.33.1": [
+    "Foo.mk.inj",
+    "Foo.mk.injEq",
+    "Foo.mk.sizeOf_spec",
+    "easy_thm",
+    "instNonemptyFoo"
+   ],
+   "4.36.0": [
+    "Foo.mk.inj",
+    "Foo.mk.injEq",
+    "Foo.mk.sizeOf_spec",
+    "easy_thm",
+    "instNonemptyFoo"
+   ]
+  },
+  "want": [
+   null,
+   "easy_thm"
+  ],
+  "note": "as ed: `end deriving ...` - the keyword is not the scope name"
+ },
+ "g1": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm",
+    "hard_thm"
+   ],
+   "4.36.0": [
+    "easy_thm",
+    "hard_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "core token `]'`"
+ },
+ "h1": {
+  "lean": {
+   "4.33.1": "ERROR"
+  },
+  "want": "UNCLEAR",
+  "note": "higher_order / simps! refused"
+ },
+ "h2": {
+  "lean": {
+   "4.33.1": "ERROR"
+  },
+  "want": "UNCLEAR",
+  "note": "higher_order refused"
+ },
+ "h3": {
+  "lean": {
+   "4.33.1": "ERROR"
+  },
+  "want": "UNCLEAR",
+  "note": "higher_order refused"
+ },
+ "r1": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm",
+    "hard_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "Mathlib token `~r` before a plain string: raw-string opener after a symbol refused"
+ },
+ "s1": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm",
+    "hard_thm"
+   ],
+   "4.36.0": [
+    "easy_thm",
+    "hard_thm"
+   ]
+  },
+  "want": [
+   "hard_thm",
+   "easy_thm"
+  ],
+  "note": "`section theorem ...`: anonymous section, both theorems -> inference NO-VERDICT (ambiguous)"
+ },
+ "s2": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm",
+    "hard_thm"
+   ],
+   "4.36.0": [
+    "easy_thm",
+    "hard_thm"
+   ]
+  },
+  "want": [
+   "easy_thm",
+   "hard_thm"
+  ],
+  "note": "`noncomputable section theorem ...` as s1"
+ },
+ "sl": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm"
+   ],
+   "4.36.0": [
+    "easy_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "`lemma` without a Mathlib / Batteries import refused"
+ },
+ "t6": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm",
+    "hard_thm"
+   ],
+   "4.36.0": [
+    "easy_thm",
+    "hard_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "run_tac refused"
+ },
+ "t7": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm",
+    "hard_thm"
+   ],
+   "4.36.0": [
+    "easy_thm",
+    "hard_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "by_elab refused"
+ },
+ "w1": {
+  "lean": {
+   "4.33.1": "ERROR",
+   "4.36.0": "ERROR"
+  },
+  "want": "UNCLEAR",
+  "note": "`where` clause of a theorem refused"
+ },
+ "w2": {
+  "lean": {
+   "4.33.1": "ERROR",
+   "4.36.0": "ERROR"
+  },
+  "want": "UNCLEAR",
+  "note": "`let rec` refused"
+ },
+ "w3": {
+  "lean": {
+   "4.33.1": [
+    "easy_thm",
+    "f._root_.hard_thm"
+   ],
+   "4.36.0": [
+    "easy_thm",
+    "f._root_.hard_thm"
+   ]
+  },
+  "want": "UNCLEAR",
+  "note": "`where` clause of a def refused"
+ }
+}

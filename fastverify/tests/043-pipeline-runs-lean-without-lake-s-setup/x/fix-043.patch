@@ -1,0 +1,34 @@
+--- $LIGHT_LEAN/fastverify/pipeline/sched_r.py
++++ fixed/sched_r.py
+@@ -73,6 +73,16 @@
+ OFFICIAL_LEAN = CFG.get('OFFICIAL_LEAN') or None
+ 
+ 
++def _pkg_name():
++    """(finding 043): the package name Lake would put into the setup = `name` of the project's lakefile.toml"""
++    try:
++        for line in open(os.path.join(PROJ, 'lakefile.toml'), encoding='utf-8'):
++            mm = re.match(r'\s*name\s*=\s*"([^"]*)"', line)
++            if mm: return mm.group(1)
++    except OSError: pass
++    return None
++PKG_NAME = _pkg_name()
++
+ def header_imports(path):
+     imps, depth = [], 0
+     with open(path, encoding='utf-8', errors='replace') as f:
+@@ -201,7 +211,13 @@
+         extra = [a for a in LEAN_EXTRA if not (m in KTC_GUARD and a.startswith('-Ddebug.skipKernelTC'))]
+         if m in pristine_mode: extra, nat = [], []
+         lean_bin = OFFICIAL_LEAN if m in official_mode else LEAN
+-        args = [lean_bin] + margs + extra + nat + ['-R', SRC, os.path.join(SRC, rel), '-o', olean] + \
++        # fix for finding 043: give lean the same module setup Lake gives it (package id; else every olean lacks it)
++        setupf = os.path.join(tmpd, f'setup-{len(running)}-{time.monotonic_ns()}.json')
++        with open(setupf, 'w') as sf:
++            json.dump({'name': m, 'package': PKG_NAME, 'isModule': False, 'importArts': {}, 'dynlibs': [], 'plugins': [],
++                       'options': {}}, sf)
++        setup_args = ['--setup', setupf]
++        args = [lean_bin] + margs + extra + nat + setup_args + ['-R', SRC, os.path.join(SRC, rel), '-o', olean] + \
+                ([] if NO_ILEAN else ['-i', ilean]) + ([] if NO_C else ['-c', cfile])
+         outp = os.path.join(tmpd, f'{len(running)}-{time.monotonic_ns()}.out')
+         fd = os.open(outp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

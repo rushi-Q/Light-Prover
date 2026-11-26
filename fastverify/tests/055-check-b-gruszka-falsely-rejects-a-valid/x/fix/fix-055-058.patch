@@ -1,0 +1,155 @@
+diff --git a/src/induct.rs b/src/induct.rs
+index b0c425f..58ff376 100644
+--- a/src/induct.rs
++++ b/src/induct.rs
+@@ -431,6 +431,97 @@ impl Worker {
+             f = self.ta(f);
+         }
+         args.reverse();
++        // 055 fix: a parameter of an auxiliary type applied to arguments (`t α` with t := Box in BaseFoo's
++        // constructor): Lean instantiates the parameters first and sees the constant-headed `Box Foo3`
++        if !args.is_empty() && self.tk(f) == BVAR && self.tp(f) >= depth {
++            let mut v = self.env_get(env, self.tp(f) - depth)?;
++            // (row, level list, head argument values) of the parameter's argument, if it is a constant application
++            let mut head: Option<(u32, u32, Vec<V>)> = None;
++            loop {
++                match self.val(v) {
++                    Val::Thunk { term, env: he, ls: hl } => {
++                        if self.tk(term) == BVAR {
++                            v = self.env_get(he, self.tp(term))?;
++                            continue;
++                        }
++                        let mut hargs = Vec::new();
++                        let mut hf = term;
++                        while self.tk(hf) == APP {
++                            hargs.push(self.tb(hf));
++                            hf = self.ta(hf);
++                        }
++                        hargs.reverse();
++                        if self.tk(hf) == CONST {
++                            let r = self.env.row(self.ta(hf));
++                            if r != NONE {
++                                let mut hv = Vec::new();
++                                for &a in &hargs {
++                                    hv.push(self.thunk(a, he, hl)?);
++                                }
++                                let l = self.lsub_ll(hf, hl);
++                                head = Some((r, l, hv));
++                            }
++                        }
++                    }
++                    Val::Neu { head: Head::Const(r, l), spine } => {
++                        if let Some(xs) = self.app_args(spine) {
++                            head = Some((r, l, xs.to_vec()));
++                        }
++                    }
++                    _ => {}
++                }
++                break;
++            }
++            if let Some((jrow, jllr, hv)) = head {
++                if self.visible(jrow) && !ind.canon.contains(&self.canon_of_row(jrow)) {
++                    if let CKind::Induct { nparams: jnp, all: jall, .. } = &self.env.consts[jrow as usize].kind {
++                        let jnp = *jnp as usize;
++                        let jall = jall.clone();
++                        let nh = hv.len().min(jnp);
++                        let na = jnp - nh;
++                        if args.len() >= na {
++                            let mut nested = false;
++                            for &x in &hv[..nh] {
++                                if self.occ_val(x, &ind.canon)? {
++                                    nested = true;
++                                }
++                            }
++                            for &a in &args[..na] {
++                                if self.occ_term(a, env, depth, &ind.canon)? {
++                                    nested = true;
++                                }
++                            }
++                            if nested {
++                                for &a in &args[..na] {
++                                    for d in 0..depth {
++                                        if self.uses_var(a, d) {
++                                            return reject(format!(
++                                                "invalid nested inductive datatype '{}', nested inductive datatypes parameters cannot contain local variables",
++                                                self.env.name_str(self.env.consts[jrow as usize].name)
++                                            ));
++                                        }
++                                    }
++                                }
++                                let mut e = env;
++                                for _ in 0..depth {
++                                    e = self.push_env(dummy, e);
++                                }
++                                let mut ds: Vec<V> = hv[..nh].to_vec();
++                                for &a in &args[..na] {
++                                    ds.push(self.thunk(a, e, ls)?);
++                                }
++                                self.nested_found_vals(ind, ds, jllr, jrow, &jall)?;
++                                // the remaining arguments (indices) are scanned like any subterm
++                                for &a in &args[na..] {
++                                    self.scan_nested(ind, a, env, ls, depth, dummy)?;
++                                }
++                                return Ok(());
++                            }
++                        }
++                    }
++                }
++            }
++        }
+         if !args.is_empty() && self.tk(f) == CONST {
+             let jrow = self.env.row(self.ta(f));
+             if jrow != NONE && self.visible(jrow) && !ind.canon.contains(&self.canon_of_row(jrow)) {
+@@ -463,6 +554,11 @@ impl Worker {
+                     if let Val::Thunk { term, env: e2, ls: l2 } = self.val(v) {
+                         return self.scan_nested(ind, term, e2, l2, 0, dummy);
+                     }
++                    // 055(b) fix: Pi-typed arguments are closures (Val::Clo), not thunks; Lean's instantiated
++                    // constructor type contains them literally and replace_all_nested looks inside
++                    if let Val::Clo { term, env: e2, ls: l2 } = self.val(v) {
++                        return self.scan_nested(ind, term, e2, l2, 0, dummy);
++                    }
+                 }
+                 Ok(())
+             }
+@@ -517,6 +613,11 @@ impl Worker {
+             ds.push(self.thunk(a, e, ls)?);
+         }
+         let jllr = self.lsub_ll(f, ls);
++        self.nested_found_vals(ind, ds, jllr, jrow, jall)
++    }
++
++    /// 055 fix: the part of nested_found after the parameter arguments are values
++    fn nested_found_vals(&mut self, ind: &mut Ind, ds: Vec<V>, jllr: u32, jrow: u32, jall: &[u32]) -> R<()> {
+         // an equal occurrence already has its auxiliary type
+         for j in 0..ind.types.len() {
+             let ti = &ind.types[j];
+@@ -770,7 +871,27 @@ impl Worker {
+                     if (!aux || i >= npj) && self.occ_term(dom, e, 0, &canon)? {
+                         // Lean's is_rec looks at every binder domain
+                         is_rec = true;
+-                        if is_pi(self.tk(dom)) {
++                        // 058 fix: Lean decides reflexivity on the auxiliary constructor type with the
++                        // parameters INSTANTIATED (elim_nested_inductive); a parameter BVAR stands for its argument
++                        let mut d = dom;
++                        let mut de = e;
++                        let mut refl = is_pi(self.tk(d));
++                        while !refl && self.tk(d) == BVAR {
++                            let v = self.env_get(de, self.tp(d))?;
++                            match self.val(v) {
++                                Val::Thunk { term, env: e2, .. } => {
++                                    d = term;
++                                    de = e2;
++                                    refl = is_pi(self.tk(d));
++                                }
++                                Val::Clo { term, .. } => {
++                                    refl = is_pi(self.tk(term));
++                                    break;
++                                }
++                                _ => break,
++                            }
++                        }
++                        if refl {
+                             is_reflexive = true;
+                         }
+                     }

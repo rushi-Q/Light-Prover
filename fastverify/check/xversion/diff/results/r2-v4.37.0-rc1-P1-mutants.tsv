@@ -1,0 +1,12 @@
+gate	case	expected	rc	verdict	seconds	status	classes	reason
+mutants	r2-B1	ACCEPTED	0	ACCEPTED	51.75	PASS		statements + axioms match the challenge (official judge code); the official Lean 4.36 kernel (parallel replay) and the independent kernel gruszka accept every declaration of the export
+mutants	r2-D1	REJECTED	1	REJECTED	25.08	PASS		error: Lean default exited with 1
+mutants	r2-I1	REJECTED	1	REJECTED	43.53	PASS		error: Lean default exited with 1
+mutants	r2-I2	REJECTED	2	NOVERDICT(2)	46.89	WARN	WARN-DECLINE	the second kernel could not decide (error: gruszka (second kernel) exited with 2)
+mutants	r2-K1	REJECTED	1	REJECTED	7.33	PASS		error: Illegal axiom detected: 'Nat.even_mul_succ_self'
+mutants	r2-L1	REJECTED	1	REJECTED	46.73	PASS		error: Lean default exited with 1
+mutants	r2-P1	REJECTED	1	REJECTED	22.41	PASS		error: Lean default exited with 1
+mutants	r2-R1	REJECTED	1	REJECTED	47.57	PASS		error: Lean default exited with 1
+mutants	r2-R2	REJECTED	1	REJECTED	47.29	PASS		error: Lean default exited with 1
+mutants	r2-U1	REJECTED	1	REJECTED	43.37	PASS		error: Lean default exited with 1
+mutants	r2-U2	ACCEPTED	0	ACCEPTED	41.77	PASS		statements + axioms match the challenge (official judge code); the official Lean 4.36 kernel (parallel replay) and the independent kernel gruszka accept every declaration of the export

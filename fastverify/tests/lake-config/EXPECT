@@ -1,0 +1,13 @@
+# case official_rc official_sha16 (live official run)
+proj-glob1 0 afac90272d10b6b5
+proj-mls 0 afac90272d10b6b5
+proj-leanonly 0 afac90272d10b6b5
+proj-strbool 1 -
+proj-intbool 0 afac90272d10b6b5
+proj-sq 1 -
+proj-esc 1 -
+proj-sq2 1 -
+proj-std 0 f6bc1932dc2d31e5
+proj-dotted 1 -
+proj-mlarr 0 f6bc1932dc2d31e5
+proj-root 0 f6bc1932dc2d31e5

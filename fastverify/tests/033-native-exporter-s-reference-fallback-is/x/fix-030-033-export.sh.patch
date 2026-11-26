@@ -1,0 +1,11 @@
+--- fixes/export.sh.orig
++++ fixes/export.sh
+@@ -8,7 +8,7 @@
+ TCW=$E/tc-v4.33.1-wrapped
+ cp "$TG" "$W/log/export-targets.txt"; cp "$OFF" "$W/log/bin/lean4export.official"
+ run() {  # $1 = exporter path inside log/bin, $2 = tag
+-  "$D/sbx.sh" "$W/proj" "$W/log" "$TCW" -- /bin/bash -c "cd $W/proj && ${LEAN4EXPORT_EXPR_ESTIMATE_LOG2:+LEAN4EXPORT_EXPR_ESTIMATE_LOG2=$LEAN4EXPORT_EXPR_ESTIMATE_LOG2} LEAN_PATH='$LP' /usr/bin/time -v $W/log/bin/$1 Main -- \$(cat $W/log/export-targets.txt) > $W/log/solution.export 2> $W/log/export.$2.time"
++  "$D/sbx.sh" "$W/proj" "$W/log" "$TCW" -- /bin/bash -c "cd $W/proj && LEAN_ABORT_ON_PANIC=1 ${LEAN4EXPORT_EXPR_ESTIMATE_LOG2:+LEAN4EXPORT_EXPR_ESTIMATE_LOG2=$LEAN4EXPORT_EXPR_ESTIMATE_LOG2} LEAN_PATH='$LP' /usr/bin/time -v $W/log/bin/$1 Main -- \$(cat $W/log/export-targets.txt) > $W/log/solution.export 2> $W/log/export.$2.time"
+ }
+ rc=1
+ if [ -n "${LEAN4EXPORT_BIN:-}" ] && [ -x "$LEAN4EXPORT_BIN" ]; then

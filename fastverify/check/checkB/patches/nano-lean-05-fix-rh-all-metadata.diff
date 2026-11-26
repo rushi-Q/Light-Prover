@@ -1,0 +1,24 @@
+--- a/src/import/json.rs
++++ b/src/import/json.rs
+@@ -263,15 +263,15 @@
+         let Some(all) = d.get("all") else {
+             return Ok(());
+         };
+-        let own = self.name(idx(&d["name"])?)?;
+-        let all = array(all)?
++        // F06 fix-rh-all: the names must still parse (as Lean's export parser requires), but the `all` list of a
++        // definition / theorem / opaque / axiom is metadata that neither the Lean 4.36 kernel nor Lean.Replay checks
++        // (the real full-RH export has a theorem whose `all` does not contain its own name, which the official
++        // comparator accepts); requiring membership/distinctness made nl-fast decline the RH export.
++        let _own = self.name(idx(&d["name"])?)?;
++        let _all = array(all)?
+             .iter()
+             .map(|n| self.name(idx(n)?))
+             .collect::<Result<Vec<_>>>()?;
+-        let distinct = all.iter().collect::<FxHashSet<_>>().len() == all.len();
+-        if !all.contains(&own) || !distinct {
+-            return invalid("invalid declaration group metadata");
+-        }
+         Ok(())
+     }
+ 

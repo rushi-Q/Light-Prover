@@ -1,0 +1,37 @@
+{
+ "incr_server": "$LIGHT_LEAN/fastverify/overlap/incr-server.sh",
+ "incr_threads": 32,
+ "incr_cases": [
+  {
+   "name": "snap-NatAddBogus-final-honest",
+   "snaps": [
+    "/scratch/sound-gates-work/midmut/natadd-bogus.export"
+   ],
+   "final": "/scratch/bench-inputs/rh-mid/ref/solution.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export",
+   "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json",
+   "expect": "ACCEPTED"
+  },
+  {
+   "name": "snap-honest+NatAddBogus-final-honest",
+   "snaps": [
+    "/scratch/bench-inputs/rh-mid/ref/solution.export",
+    "/scratch/sound-gates-work/midmut/natadd-bogus.export"
+   ],
+   "final": "/scratch/bench-inputs/rh-mid/ref/solution.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export",
+   "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json",
+   "expect": "ACCEPTED"
+  },
+  {
+   "name": "snap-NatAddBogus-final-midM2",
+   "snaps": [
+    "/scratch/sound-gates-work/midmut/natadd-bogus.export"
+   ],
+   "final": "/scratch/sound-gates-work/midmut/midM2.export",
+   "challenge": "/scratch/bench-inputs/rh-mid/challenge/challenge.export",
+   "config": "/scratch/bench-inputs/rh-mid/challenge/comparator.json",
+   "expect": "REJECTED"
+  }
+ ]
+}

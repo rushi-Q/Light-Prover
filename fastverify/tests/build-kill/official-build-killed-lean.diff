@@ -1,0 +1,16 @@
+--- patch/official-build.sh.orig
++++ patch/official-build.sh
+@@ -100,6 +100,13 @@
+   if grep -qE "No space left on device|Cannot allocate memory|Resource temporarily unavailable|failed to create thread|Too many open files|mmap.*failed|out of memory|Stale file handle|failed to read file '" "$LOG/build.log"; then
+     emit ERROR 2 "lake build exit $rc with a host resource error: $(grep -m2 -E "No space left on device|Cannot allocate memory|Resource temporarily unavailable|failed to create thread|Too many open files|mmap.*failed|out of memory|Stale file handle|failed to read file '" "$LOG/build.log" | tr '\n' ' ' | cut -c1-300)"; exit 2
+   fi
++  # a `lean` of the build killed from OUTSIDE - SIGKILL by the kernel's OOM killer under a memory limit, or
++  # SIGTERM/SIGKILL by a job manager - makes `lake build` print "error: Lean exited with code 137/143" and exit 1; that is a
++  # host/resource failure like the ones above (the module did not fail to elaborate), so it is no verdict (fail closed),
++  # never REJECTED. (lib/fastverify.py maps the official exporter's rc 137/143 the same way.)
++  if grep -qE "Lean exited with code (137|143)\b" "$LOG/build.log"; then
++    emit ERROR 2 "lake build exit $rc: a lean process was killed from outside (OOM killer / job manager): $(grep -m2 -E 'Lean exited with code (137|143)' "$LOG/build.log" | tr '\n' ' ' | cut -c1-200)"; exit 2
++  fi
+   # `lake build` had to WRITE into a dependency package of the trusted workspace, which is bound read-only (a
+   # lean_exe default target compiling a dependency's native code, Lake's artifact cache): every error is such an EROFS
+   # on a path under PROJ/.lake/packages -> a normal checkout would build: no verdict (fail closed), never REJECTED

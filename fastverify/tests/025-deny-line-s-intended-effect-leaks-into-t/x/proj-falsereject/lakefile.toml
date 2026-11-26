@@ -1,0 +1,19 @@
+name = "mini"
+srcDir = "src"
+defaultTargets = ["Main"]
+moreLeanArgs = ["--tstack=400000"]
+
+[leanOptions]
+autoImplicit = false
+relaxedAutoImplicit = false
+maxSynthPendingDepth = 3
+pp.unicode.fun = true
+maxHeartbeats = 4000000
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]
+
+[[lean_lib]]
+name = "Lemmas"
+roots = ["Lemmas"]

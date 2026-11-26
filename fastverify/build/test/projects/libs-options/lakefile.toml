@@ -1,0 +1,17 @@
+name = "t1"
+srcDir = "src"
+defaultTargets = ["A", "Main"]
+moreLeanArgs = ["--tstack=400000"]
+
+[leanOptions]
+autoImplicit = false
+maxHeartbeats = 400000
+
+[[lean_lib]]
+name = "A"
+globs = ["A.+"]
+leanOptions = {synthInstance.maxHeartbeats = 30000}
+
+[[lean_lib]]
+name = "Main"
+roots = ["Main"]

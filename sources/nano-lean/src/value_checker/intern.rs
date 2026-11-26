@@ -1,0 +1,209 @@
+use super::tables::fx;
+use super::value::{Clo, Head, K, Lazy, Sub, V, Val, key};
+use super::{Vc, bytes, stat};
+use crate::term::ptr::{ExprPtr, LevelPtr, LevelsPtr, NamePtr};
+use rustc_hash::FxBuildHasher;
+use std::hash::{BuildHasher, Hash, Hasher};
+use std::ptr;
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub(super) enum HKey<'t> {
+    Sort(LevelPtr<'t>),
+    Pi(usize, (usize, Sub<'t>, ExprPtr<'t>, bool)),
+    Lam(usize, (usize, Sub<'t>, ExprPtr<'t>, bool)),
+    Const(NamePtr<'t>, LevelsPtr<'t>),
+    Proj(NamePtr<'t>, u16, usize),
+    Str(usize, usize),
+}
+
+/// The interning key of a value, recomputed so the table stores only the value.
+fn hkey<'t>(k: K<'t>) -> HKey<'t> {
+    let ck = |c: Clo<'t>| (c.env.key(), c.sub, c.body, c.typed);
+    match k {
+        K::Sort(l) => HKey::Sort(l),
+        K::Pi(d, c) => HKey::Pi(key(d), ck(c)),
+        K::Lam(d, c) => HKey::Lam(d as *const Lazy as usize, ck(c)),
+        K::Neu(h, _) => match h {
+            Head::Local(..) => unreachable!("locals are not interned"),
+            Head::Const(n, ls) => HKey::Const(n, ls),
+            Head::Proj(n, i, x) => HKey::Proj(n, i, key(x)),
+        },
+        K::Nat(_) => unreachable!("literals are interned by value"),
+        K::Str(x) => HKey::Str(x.as_ptr() as usize, x.len()),
+    }
+}
+
+fn head_eq<'t>(a: Head<'t>, b: Head<'t>) -> bool {
+    match (a, b) {
+        (Head::Local(i, ..), Head::Local(j, ..)) => i == j,
+        (Head::Const(n, l), Head::Const(m, k)) => n == m && l == k,
+        (Head::Proj(n, i, x), Head::Proj(m, j, y)) => n == m && i == j && ptr::eq(x, y),
+        _ => false,
+    }
+}
+
+fn neu_hash<'t, 'v>(h: Head<'t>, n: usize, args: impl Iterator<Item = &'v V<'t>>) -> u64
+where
+    't: 'v,
+{
+    let mut s = FxBuildHasher.build_hasher();
+    match h {
+        Head::Local(i, ..) => (0u8, i).hash(&mut s),
+        Head::Const(c, l) => (1u8, c, l).hash(&mut s),
+        Head::Proj(c, i, x) => (2u8, c, i, key(x)).hash(&mut s),
+    }
+    s.write_usize(n);
+    for &a in args {
+        s.write_usize(key(a));
+    }
+    s.finish()
+}
+
+#[repr(transparent)]
+pub(super) struct Ptrs<'t>([V<'t>]);
+
+impl<'t> Ptrs<'t> {
+    pub(super) fn new<'s>(a: &'s [V<'t>]) -> &'s Self {
+        // SAFETY: `Ptrs` is a transparent wrapper over the slice.
+        unsafe { &*(a as *const [V<'t>] as *const Self) }
+    }
+}
+
+impl Hash for Ptrs<'_> {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        h.write_usize(self.0.len());
+        for &v in &self.0 {
+            h.write_usize(key(v));
+        }
+    }
+}
+
+impl PartialEq for Ptrs<'_> {
+    fn eq(&self, o: &Self) -> bool {
+        self.0.len() == o.0.len() && self.0.iter().zip(&o.0).all(|(&a, &b)| ptr::eq(a, b))
+    }
+}
+
+impl Eq for Ptrs<'_> {}
+
+impl<'t, 'a: 't> Vc<'t, 'a> {
+    pub(crate) fn mk(&mut self, k: K<'t>, open: bool) -> V<'t> {
+        // Pi values rarely recur, so probing for them only costs.
+        if matches!(k, K::Pi(..)) {
+            stat!(self, vals);
+            bytes!(self, b_val, size_of::<Val>());
+            return self.ctx.arena.alloc(Val::new(k, open));
+        }
+        match k {
+            K::Nat(n) => return self.nat(n.clone()),
+            K::Neu(_, a) => debug_assert!(a.is_empty()),
+            _ => {}
+        }
+        let hk = hkey(k);
+        stat!(self, mk_req);
+        #[cfg(feature = "vstats")]
+        let kind = match (&hk, open) {
+            (HKey::Sort(_), _) => 0,
+            (HKey::Pi(..), true) => 1,
+            (HKey::Pi(..), false) => 2,
+            (HKey::Lam(..), true) => 3,
+            (HKey::Lam(..), false) => 4,
+            (HKey::Str(..), _) => 6,
+            (_, true) => 5,
+            (_, false) => 7,
+        };
+        let hc = &mut self.t.hc[usize::from(open)];
+        let h = fx(&hk);
+        if let Some(v) = hc.find(h, |v| hkey(v.k) == hk) {
+            #[cfg(feature = "vstats")]
+            self.stats.mk_kind(kind, true);
+            return v;
+        }
+        #[cfg(feature = "vstats")]
+        self.stats.mk_kind(kind, false);
+        let v = self.ctx.arena.alloc(Val::new(k, open));
+        hc.insert(h, v);
+        bytes!(self, b_val, size_of::<Val>());
+        stat!(self, vals);
+        v
+    }
+
+    /// Substitution rebuilds the same Pi values on every fire of a rule, and a recursor chain
+    /// stays shared across calls only while they keep one pointer, so these are interned.
+    pub(crate) fn mk_pi(&mut self, d: V<'t>, c: Clo<'t>, open: bool) -> V<'t> {
+        let k = K::Pi(d, c);
+        let hk = hkey(k);
+        let hc = &mut self.t.hc[usize::from(open)];
+        let h = fx(&hk);
+        if let Some(v) = hc.find(h, |v| hkey(v.k) == hk) {
+            #[cfg(feature = "vstats")]
+            self.stats.mk_kind(2 - usize::from(open), true);
+            return v;
+        }
+        #[cfg(feature = "vstats")]
+        self.stats.mk_kind(2 - usize::from(open), false);
+        let v = self.ctx.arena.alloc(Val::new(k, open));
+        hc.insert(h, v);
+        bytes!(self, b_val, size_of::<Val>());
+        stat!(self, vals);
+        v
+    }
+
+    /// One table for open and closed neutrals, since the key decides openness.
+    pub(crate) fn neu(&mut self, h: Head<'t>, sp: &[V<'t>], rest: &[V<'t>]) -> V<'t> {
+        stat!(self, spine_req);
+        let n = sp.len() + rest.len();
+        let hash = neu_hash(h, n, sp.iter().chain(rest));
+        let m = sp.len();
+        let same = |&(hv, v): &(u64, V<'t>)| {
+            hv == hash
+                && matches!(v.k, K::Neu(g, a) if a.len() == n && head_eq(g, h)
+                && Ptrs::new(&a[..m]) == Ptrs::new(sp) && Ptrs::new(&a[m..]) == Ptrs::new(rest))
+        };
+        if let Some(&(_, v)) = self.t.neus.find(hash, same) {
+            #[cfg(feature = "vstats")]
+            if v.open {
+                self.stats.neu_open_hit += 1;
+            } else {
+                self.stats.neu_closed_hit += 1;
+            }
+            return v;
+        }
+        self.neu_new(h, sp, rest, hash)
+    }
+
+    #[inline(never)]
+    fn neu_new(&mut self, h: Head<'t>, sp: &[V<'t>], rest: &[V<'t>], hash: u64) -> V<'t> {
+        let n = sp.len() + rest.len();
+        let open = match h {
+            Head::Local(..) => true,
+            Head::Const(..) => false,
+            Head::Proj(_, _, x) => x.open,
+        } || sp.iter().chain(rest).any(|a| a.open);
+        #[cfg(feature = "vstats")]
+        if open {
+            self.stats.neu_open_miss += 1;
+        } else {
+            self.stats.neu_closed_miss += 1;
+        }
+        let all: &'t [V<'t>] = if sp.is_empty() {
+            self.ctx.arena.alloc_slice_copy(rest)
+        } else {
+            let m = sp.len();
+            self.ctx
+                .arena
+                .alloc_slice_fill_with(n, |i| if i < m { sp[i] } else { rest[i - m] })
+        };
+        #[cfg(feature = "vstats")]
+        {
+            self.stats.spine_new += 1;
+            self.stats.spine_copied += n as u64;
+        }
+        stat!(self, vals);
+        bytes!(self, b_val, size_of::<Val>());
+        bytes!(self, b_spine, size_of_val(all));
+        let v = self.ctx.arena.alloc(Val::new(K::Neu(h, all), open));
+        self.t.neus.insert_unique(hash, (hash, v), |&(g, _)| g);
+        v
+    }
+}

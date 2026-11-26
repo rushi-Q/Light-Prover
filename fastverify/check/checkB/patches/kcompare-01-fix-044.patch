@@ -1,0 +1,32 @@
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1554,6 +1554,29 @@
+         decls.append(&mut c.decls);
+     }
+     std::mem::forget(cs); // freeing is wasted time; the process exits soon
++    // X07 fix for finding 044: the official parser builds Lean.Level / Lean.Expr objects, whose data fields have hard limits
++    // (kernel/level.cpp lean_level_mk_data: depth <= 2^24-1; kernel/expr.cpp lean_expr_mk_data: loose bvar range <= 2^20-1);
++    // beyond them Lean aborts with an internal panic, so the official comparator rejects the file. Decline such files.
++    {
++        let mut depth = vec![0u32; levels.len()];
++        for i in 1..levels.len() {
++            let l = levels[i];
++            let d = match l.kind {
++                L_SUCC => depth[l.a as usize].saturating_add(1),
++                L_MAX | L_IMAX => depth[l.a as usize].max(depth[l.b as usize]).saturating_add(1),
++                _ => 0,
++            };
++            if d > 16777215 {
++                decline!("{}: universe level of depth {} (Lean's Level.mkData limit is 2^24-1: the official parser aborts)", path, d);
++            }
++            depth[i] = d;
++        }
++        for e in exprs.iter() {
++            if e.kind == E_BVAR && ((e.a as u64) | ((e.b as u64) << 32)) >= 1048575 {
++                decline!("{}: bound variable index >= 2^20-1 (Lean's Expr.mkData limit: the official parser aborts)", path);
++            }
++        }
++    }
+     let t3 = Instant::now();
+     let mut env = Env { file, names, levels, exprs, pool, decls, canon: Vec::new(), slots: Vec::new(), decl_of: Vec::new() };
+     // canonical names (structural equality of Lean.Name), in line order (a prefix is bound earlier)

@@ -1,0 +1,918 @@
+diff --git a/Main.lean b/Main.lean
+index 7cb934d..4e59344 100644
+--- a/Main.lean
++++ b/Main.lean
+@@ -4,6 +4,7 @@ import LeanExport.Parse
+ import PChk.Par
+ import FastParse
+ import PChk.PersistentRead
++import PChk.Incr
+ 
+ /-!
+ `pleanchecker --from-export FILE`: `leanchecker --from-export` (Lean 4.36 src/LeanChecker.lean
+@@ -52,9 +53,8 @@ def parseHintName (s : String) : Name := Id.run do
+   return comps.foldl (init := Name.anonymous) fun n c =>
+     if !c.isEmpty && c.all Char.isDigit then Name.mkNum n c.toNat! else Name.mkStr n c
+ 
+-unsafe def checkExport (exportFile : String) (silent seq verbose : Bool) (nthreads : Nat) : IO UInt32 := do
+-  let t0 ← IO.monoNanosNow
+-  do
++/-- Parse an export exactly as `checkExport` always did (S08: factored out, unchanged). -/
++unsafe def parseExport (exportFile : String) (seq verbose : Bool) (t0 : Nat) : IO LeanExport.ExportedEnv := do
+     -- C05's fast reader (objects marked persistent per chunk, PChk/PersistentRead.lean): returns exactly what
+     -- `LeanExport.parseStream` returns on this file, or falls back to it
+     let exportEnv ← if seq then IO.FS.withFile exportFile .read fun handle => LeanExport.parseStream (.ofHandle handle)
+@@ -67,6 +67,12 @@ unsafe def checkExport (exportFile : String) (silent seq verbose : Bool) (nthrea
+       IO.eprintln s!"[pchk] read {(tp - t0) / 1000000} ms, markPersistent {((← IO.monoNanosNow) - tp) / 1000000} ms"
+     if verbose then
+       IO.eprintln s!"[pchk] parse {((← IO.monoNanosNow) - t0) / 1000000} ms, {exportEnv.constMap.size} constants"
++    return exportEnv
++
++/-- The replay + quotient post-check of `checkExport` on a parsed export (S08: factored out, unchanged). -/
++unsafe def checkParsed (exportEnv : LeanExport.ExportedEnv) (silent seq verbose : Bool) (nthreads : Nat) (t0 : Nat) :
++    IO UInt32 := do
++  do
+     let env ← Lean.mkEmptyEnvironment
+     let mut kernelEnv := env.toKernelEnv
+     let origConstMap := exportEnv.constMap
+@@ -111,6 +117,233 @@ unsafe def checkExport (exportFile : String) (silent seq verbose : Bool) (nthrea
+       println s!"Quotient post-check rejects the solution: {e}" silent
+       return 1
+ 
++unsafe def checkExport (exportFile : String) (silent seq verbose : Bool) (nthreads : Nat) : IO UInt32 := do
++  let t0 ← IO.monoNanosNow
++  let exportEnv ← parseExport exportFile seq verbose t0
++  checkParsed exportEnv silent seq verbose nthreads t0
++
++/-- A nonce is exactly 32 lowercase hex digits (so it can be used as a file-name part). -/
++def isNonce (s : String) : Bool := s.length == 32 && s.all fun c => c.isDigit || ('a' ≤ c && c ≤ 'f')
++
++def hexOf (b : ByteArray) : String :=
++  b.foldl (init := "") fun acc x =>
++    let d := "0123456789abcdef"
++    acc.push (d.get ⟨(x / 16).toNat⟩) |>.push (d.get ⟨(x % 16).toNat⟩)
++
++/-- Size and modification time of a file ("SIZE SEC NSEC"; "missing" if it cannot be read). -/
++def fileStamp (path : String) : IO String := do
++  try
++    let md ← System.FilePath.metadata path
++    return s!"{md.byteSize} {md.modified.sec} {md.modified.nsec}"
++  catch _ => return "missing"
++
++/-- `--incremental[=DIR]` (S08, see PChk/Incr.lean). Commands, one per line, on stdin or (with DIR) on the FIFO
++`DIR/cmd` (opened read-write, so writers may come and go): `snap PATH` and `final PATH [NONCE]`.
++ACCEPT (0) either by the incremental path (every condition of PChk/Incr.lean holds) or by `checkParsed`; every
++non-accept is `checkParsed`'s verdict on the final export PATH. With DIR, the process holds an exclusive lock on
++`DIR/lock` for its whole life and, for `final PATH NONCE`, writes its exit code to `DIR/res-NONCE` (atomically, before
++exiting) for the `--attach=DIR` client. Exit 2 = protocol error (no verdict). -/
++unsafe def incremental (dir? : Option String) (silent verbose : Bool) (nthreads : Nat) : IO UInt32 := do
++  let t00 ← IO.monoNanosNow
++  -- DIR mode: hold the lock (the client's liveness test), read commands from the FIFO
++  let lockH? ← match dir? with
++    | some d => do
++      let h ← IO.FS.Handle.mk (System.FilePath.mk d / "lock") .readWrite
++      h.lock (exclusive := true)
++      pure (some h)
++    | none => pure none
++  let cmdH ← match dir? with
++    | some d => IO.FS.Handle.mk (System.FilePath.mk d / "cmd") .readWrite
++    | none => IO.FS.Handle.mk "/dev/stdin" .read
++  let mut env := (← Lean.mkEmptyEnvironment).toKernelEnv
++  let mut nsnap := 0
++  let mut nok := 0
++  -- S03's scheduling hint (order only, never verdict-relevant), as in checkParsed
++  let prio ← match ← IO.getEnv "PCHK_PRIO_FILE" with
++    | some f => do
++      let txt ← (IO.FS.readFile f).catchExceptions fun _ => pure ""
++      pure <| txt.splitOn "\n" |>.foldl (init := ({} : NameSet)) fun acc l =>
++        let l := l.trimAscii.toString
++        if l.isEmpty then acc else acc.insert (parseHintName l)
++    | none => pure {}
++  -- Commands are read by a dedicated reader task, so that a snapshot received while another one is being replayed is
++  -- already parsed meanwhile (parse-ahead). Snapshots are still ingested one by one in arrival order; a `final` that
++  -- arrives skips the snapshots queued before it that have not started (they are simply not ingested).
++  let ch ← Std.CloseableChannel.new (α := String)
++  let _reader ← IO.asTask (prio := .dedicated) do
++    repeat
++      let raw ← cmdH.getLine
++      discard <| (ch.sync.send raw).toBaseIO
++      if raw.isEmpty then break
++  let startParse (path : String) : IO (Task (Except IO.Error LeanExport.ExportedEnv)) := do
++    let t0 ← IO.monoNanosNow
++    IO.asTask (prio := .dedicated) (parseExport path false verbose t0)
++  -- queue of received commands: (line, parse task for snapshots)
++  let mut q : Array (String × Option (Task (Except IO.Error LeanExport.ExportedEnv))) := #[]
++  repeat
++    -- take every command that is already there (non-blocking); if none is queued, wait for one
++    let mut more := true
++    while more do
++      match ← ch.sync.tryRecv with
++      | some raw =>
++        let l : String := (raw.trimAsciiEnd).toString
++        if raw.isEmpty then q := q.push ("", none)
++        else if let some p := l.dropPrefix? "snap " then q := q.push (l, some (← startParse p.toString))
++        else q := q.push (l, none)
++      | none => more := false
++    if q.isEmpty then
++      let raw ← match ← ch.sync.recv with
++        | some r => pure r
++        | none => pure ""
++      let l : String := (raw.trimAsciiEnd).toString
++      if raw.isEmpty then q := q.push ("", none)
++      else if let some p := l.dropPrefix? "snap " then q := q.push (l, some (← startParse p.toString))
++      else q := q.push (l, none)
++      continue
++    let (line, task?) := q[0]!
++    q := q.extract 1 q.size
++    if line.isEmpty then
++      IO.eprintln "[incr] command stream closed before a final command: no verdict"
++      return 2
++    if let some path := line.dropPrefix? "snap " then
++      nsnap := nsnap + 1
++      let label := s!"snapshot {nsnap}"
++      if dir?.isSome && q.any (fun (l, _) => l.startsWith "final ") then
++        IO.eprintln s!"[incr] {label} ({path}): a final request is waiting; snapshot skipped"
++        continue
++      try
++        let ex ← match task? with
++          | some t => IO.ofExcept (← IO.wait t)
++          | none => parseExport path.toString false verbose (← IO.monoNanosNow)
++        -- the ingestion runs in a task; meanwhile (DIR mode) a final request that arrives aborts it (the snapshot is
++        -- then dropped: E unchanged), so that the final step never waits for a snapshot
++        let tk ← IO.CancelToken.new
++        let job ← IO.asTask (prio := .dedicated)
++          (PChk.Incr.ingestSnapshot env ex.constMap nthreads verbose label prio (some tk))
++        while !(← IO.hasFinished job) do
++          if dir?.isSome then
++            let mut more2 := true
++            while more2 do
++              match ← ch.sync.tryRecv with
++              | some raw =>
++                let l : String := (raw.trimAsciiEnd).toString
++                if raw.isEmpty then q := q.push ("", none)
++                else if let some p := l.dropPrefix? "snap " then q := q.push (l, some (← startParse p.toString))
++                else q := q.push (l, none)
++              | none => more2 := false
++            if q.any (fun (l, _) => l.startsWith "final ") then tk.set
++          IO.sleep 100
++        match ← IO.ofExcept (← IO.wait job) with
++        | .ok (env', same, done, left) =>
++          env := env'
++          nok := nok + 1
++          -- information for the (untrusted) snapshot driver: what was left out may be exported again later
++          if let some d := dir? then
++            try IO.FS.writeFile (System.FilePath.mk d / s!"leftout-{nsnap}.txt")
++                  (left.foldl (fun acc n => acc ++ toString n ++ "\n") "")
++            catch _ => pure ()
++          IO.eprintln s!"[incr] {label} ingested ({ex.constMap.size} constants: {same} known, {done} checked, {left.size} left out) at {((← IO.monoNanosNow) - t00) / 1000000} ms"
++        | .error e => IO.eprintln s!"[incr] {e}; snapshot dropped"
++      catch e =>
++        IO.eprintln s!"[incr] {label} ({path}): {e}; snapshot dropped"
++    else if let some rest := line.dropPrefix? "final " then
++      -- `final PATH NONCE` (DIR mode, from the client) or `final PATH`
++      let rest := rest.toString
++      let ws := rest.splitOn " "
++      let (path, nonce?) :=
++        if dir?.isSome && ws.length ≥ 2 && isNonce ws.getLast! then
++          (" ".intercalate ws.dropLast, some ws.getLast!)
++        else (rest, none)
++      let t0 ← IO.monoNanosNow
++      let stamp0 ← fileStamp path
++      let exportEnv ← parseExport path false verbose t0
++      let m := exportEnv.constMap
++      -- nothing was ingested: the incremental path would just be the plain replay plus bookkeeping -> plain replay
++      let why : Option String ← if nok == 0 then pure (some "no snapshot was ingested")
++        else PChk.Incr.finalCheck env m nthreads verbose nsnap nok prio
++      let rc ← match why with
++        | none =>
++          println "Lean default kernel accepts the solution" silent
++          pure (0 : UInt32)
++        | some r =>
++          IO.eprintln s!"[incr] incremental path not usable ({r}); judging the final export with the non-incremental check"
++          checkParsed exportEnv silent false verbose nthreads t0
++      -- the file must not have changed while it was judged; the answer names exactly what was judged
++      let stamp1 ← fileStamp path
++      let rc : UInt32 := if stamp0 == stamp1 then rc else 2
++      if let (some d, some n) := (dir?, nonce?) then
++        let tmp := System.FilePath.mk d / s!".res-{n}.tmp"
++        IO.FS.writeFile tmp s!"{rc} {stamp1} {path}\n"
++        IO.FS.rename tmp (System.FilePath.mk d / s!"res-{n}")
++        -- DIR mode: keep serving (another request, e.g. a self-test or an injected one, must not end the service);
++        -- the orchestrator stops the process when the check is over
++        IO.eprintln s!"[incr] answered {path} with {rc}"
++        continue
++      if let some h := lockH? then h.unlock
++      return rc
++    else
++      IO.eprintln s!"[incr] unknown command: {line}"
++  return 2
++
++/-- `--attach=DIR` (S08): the Lean-kernel leg as the comparator starts it (`--silent --from-export PATH`), served by a
++running `--incremental=DIR` process: sends `final PATH NONCE` (fresh random nonce) on `DIR/cmd` and returns the exit
++code that process wrote to `DIR/res-NONCE` (0 accept / 1 reject, printing the verdict line like `checkExport`). If no
++such process holds `DIR/lock`, or it ends without answering THIS nonce, the export is judged here by the unchanged
++`checkExport`. So the result is always either the verdict of a `--incremental=DIR` process for exactly PATH, or
++`checkExport PATH`. -/
++unsafe def attach (dir exportFile : String) (silent verbose : Bool) (nthreads : Nat) : IO UInt32 := do
++  let d := System.FilePath.mk dir
++  let serverAlive : IO Bool := do
++    try
++      let h ← IO.FS.Handle.mk (d / "lock") .read
++      let free ← h.tryLock (exclusive := true)
++      if free then h.unlock
++      return !free
++    catch _ => return false
++  let fallback (why : String) : IO UInt32 := do
++    IO.eprintln s!"[attach] {why}: judging {exportFile} with the non-incremental check"
++    checkExport exportFile silent false verbose nthreads
++  unless (← serverAlive) do return ← fallback "no incremental process"
++  let nonce := hexOf (← IO.getRandomBytes 16)
++  if !isNonce nonce || exportFile.any (· == '\n') then return ← fallback "cannot form a request"
++  try
++    let h ← IO.FS.Handle.mk (d / "cmd") .readWrite
++    h.putStr s!"final {exportFile} {nonce}\n"
++    h.flush
++  catch e => return ← fallback s!"cannot send the request ({e})"
++  let res := d / s!"res-{nonce}"
++  -- an answer counts only if it names exactly this file with its current size/mtime (the server writes what it
++  -- judged: "RC SIZE SEC NSEC PATH"); anything else -> no verdict from the server (2) -> plain replay here
++  let readRes : IO (Option UInt32) := do
++    if ← res.pathExists then
++      let s := (← IO.FS.readFile res).trimAscii.toString
++      let mine ← fileStamp exportFile
++      match s.splitOn " " with
++      | rc :: a :: b :: c :: rest =>
++        if " ".intercalate rest == exportFile && s!"{a} {b} {c}" == mine && mine != "missing" then
++          match rc with
++          | "0" => return some 0
++          | "1" => return some 1
++          | _ => return some 2
++        else return some 2
++      | _ => return some 2
++    return none
++  repeat
++    if let some rc ← readRes then
++      if rc == 0 then println "Lean default kernel accepts the solution" silent
++      else if rc == 1 then println "Lean default kernel rejects the solution (incremental process)" silent
++      if rc == 2 then return ← fallback "incremental process gave no verdict"
++      return rc
++    unless (← serverAlive) do
++      if let some rc ← readRes then
++        if rc == 0 then println "Lean default kernel accepts the solution" silent
++        else if rc == 1 then println "Lean default kernel rejects the solution (incremental process)" silent
++        if rc == 2 then return ← fallback "incremental process gave no verdict"
++        return rc
++      return ← fallback "incremental process ended without answering this request"
++    IO.sleep 100
++  return 2
++
+ /-- Lean's own binding (Lean.Shell `Internal.setExitOnPanic`). -/
+ @[extern "lean_internal_set_exit_on_panic"]
+ opaque setExitOnPanic (exit : Bool) : BaseIO Unit
+@@ -129,6 +362,16 @@ unsafe def main (args : List String) : IO UInt32 := do
+   -- Stack: Lean executables run `main` in a fresh lthread (lean_run_main -> run_with_thread_stack, src/runtime/thread.cpp),
+   -- so the official leanchecker's kernel runs on a thread with lthread's stack size (1 GB default, or LEAN_STACK_SIZE_KB).
+   -- Our kernel worker threads are lthreads too (dedicated tasks) and get exactly the same size: nothing to do here.
++  if "--incremental" ∈ flags || flags.any (·.startsWith "--incremental=") then
++    unless args.isEmpty && !seq do
++      throw <| IO.userError s!"--incremental takes no export argument (commands on stdin / DIR/cmd) and no --seq"
++    let dir? := flags.findSome? fun f => (f.dropPrefix? "--incremental=").map (·.toString)
++    return ← incremental dir? silent verbose nthreads
++  if let some dir := flags.findSome? (fun f => (f.dropPrefix? "--attach=").map (·.toString)) then
++    let [exportFile] := args |
++      throw <| IO.userError s!"Exactly one export file expected but got: {args}"
++    unless !seq do throw <| IO.userError "--attach and --seq exclude each other"
++    return ← attach dir exportFile silent verbose nthreads
+   let [exportFile] := args |
+     throw <| IO.userError s!"Exactly one export file expected but got: {args}"
+   checkExport exportFile silent seq verbose nthreads
+diff --git a/PChk/Incr.lean b/PChk/Incr.lean
+new file mode 100644
+index 0000000..07880f0
+--- /dev/null
++++ b/PChk/Incr.lean
+@@ -0,0 +1,330 @@
++/-
++Incremental Lean-kernel leg (team S, S08): overlap the official-kernel replay with the build.
++Full argument: fastverify/overlap/SOUNDNESS.md. Summary:
++
++`pleanchecker --incremental[=DIR]` reads commands (`snap PATH`, `final PATH [NONCE]`) on stdin or on the FIFO DIR/cmd.
++SNAPSHOT (untrusted input) -> `ingestSnapshot`: the constants new to the checked environment E, not conflicting with E
++and whose references are all in E or among themselves are replayed on top of E with the unchanged `PChk.replayPar`
++(official kernel `addDeclCore` on every declaration, inductive blocks verified as in `Lean.Replay`); the rest is left out
++(also every declaration the kernel rejects, with its dependents). E only ever grows by kernel-accepted constants.
++FINAL (the export B the other legs judge) -> `finalCheck`, incremental ACCEPT iff:
++  (1) B is closed (every name a safe constant of B references via `refsOf` is declared in B);
++  (2) no kernel-implicit constant (`implicitNames`) has a checked version that differs from B's;
++  (3) constants of B equal (ConstantInfo BEq, Expr.eqv) to E's and not DIRTY are already checked; DIRTY = the
++      conflicting names and all their transitive dependents in B, re-checked in a separate environment that holds
++      exactly B's versions of their clean closure; FRESH \ DIRTY replayed on top of E;
++  (4) every kernel-implicit name present in the checked environment is declared in B; quotient post-check.
++Anything else -> the caller runs the unchanged non-incremental check of B (`checkParsed`).
++-/
++import Lean.CoreM
++import Lean.Replay
++import PChk.Par
++
++namespace PChk.Incr
++open Lean
++
++/-- Names the 4.36 kernel can look up without a syntactic reference in the declaration being checked: every constant
++the kernel creates itself (`git grep "name{\"" src/kernel/`, `new_persistent_expr_const`, `lit_type`,
++`mk_bool_true/false`: literal types, `Nat.zero/succ` of literal expansion, the GMP-accelerated `Nat` operations,
++`String.ofList`/`Char.ofNat`/`List.cons`/`List.nil` of string-literal expansion, `Bool.true/false`, `eagerReduce`,
++quotient init's `Eq`/`Eq.refl`, the quotient constants, `dontcare`) plus the comparator's `primitiveTargets`. -/
++def implicitNames : Array Name := #[
++  `Nat, `Nat.zero, `Nat.succ, `Nat.add, `Nat.sub, `Nat.mul, `Nat.pow, `Nat.gcd, `Nat.div, `Nat.mod, `Nat.beq,
++  `Nat.ble, `Nat.land, `Nat.lor, `Nat.xor, `Nat.shiftLeft, `Nat.shiftRight,
++  `String, `String.ofList, `String.mk, `Char, `Char.ofNat, `List, `List.cons, `List.nil,
++  `Bool, `Bool.true, `Bool.false, `eagerReduce, `Eq, `Eq.refl,
++  `Quot, `Quot.mk, `Quot.lift, `Quot.ind, `dontcare,
++  `optParam, `autoParam, `semiOutParam, `outParam]
++
++/-- The kernel's own insertion function (`Kernel.Environment.add`, private in Lean; no checking). -/
++@[extern "lean_environment_add"]
++opaque kenvAdd (env : Kernel.Environment) (cinfo : ConstantInfo) : Kernel.Environment
++
++/-- Quot.mk/lift/ind are added by the `Quot` declaration (Lean.Replay / checkExport erase them from the replay map). -/
++def quotTargets : List Name := [`Quot.mk, `Quot.lift, `Quot.ind]
++
++/-- Every name a constant needs to be declared in the same export: `getUsedConstantsAsSet` plus the block structure
++Lean.Replay looks up by name (inductive `all` and ctors, ctor `induct`, recursor `all`, rule ctors and rule rhs). -/
++def refsOf (ci : ConstantInfo) : NameSet := Id.run do
++  let mut s := ci.getUsedConstantsAsSet
++  match ci with
++  | .inductInfo v =>
++    for n in v.all do s := s.insert n
++    for n in v.ctors do s := s.insert n
++  | .ctorInfo v => s := s.insert v.induct
++  | .recInfo v =>
++    for n in v.all do s := s.insert n
++    for r in v.rules do
++      s := s.insert r.ctor
++      s := r.rhs.foldConsts s fun c acc => acc.insert c
++  | .quotInfo _ => s := s.insert `Eq
++  | _ => pure ()
++  return s
++
++/-- Chunk bounds for `n` items over `nthreads` workers. -/
++def chunks (n nthreads : Nat) : Nat × Nat :=
++  let nchunks := max 1 (min (nthreads * 16) (n / 256))
++  (nchunks, (n + nchunks - 1) / nchunks)
++
++/-- Split `m` against `env`: constants absent from `env` (to be replayed), number of constants present AND equal, and
++the names present but different (conflicts). Parallel; pure reads of persistent / MT objects. -/
++def splitAgainst (env : Kernel.Environment) (m : Std.HashMap Name ConstantInfo) (nthreads : Nat) :
++    IO (Std.HashMap Name ConstantInfo × Nat × Array Name) := do
++  let arr := m.toArray
++  let (nchunks, csz) := chunks arr.size nthreads
++  let res ← parallelFor nthreads nchunks fun c => Id.run do
++    let lo := c * csz
++    let hi := min arr.size (lo + csz)
++    let mut fresh : Array Nat := #[]
++    let mut same := 0
++    let mut bad : Array Nat := #[]
++    for i in [lo:hi] do
++      let (n, ci) := arr[i]!
++      match env.find? n with
++      | some ci' =>
++        if ci == ci' then same := same + 1
++        else bad := bad.push i
++      | none => fresh := fresh.push i
++    return (fresh, same, bad)
++  let mut out : Std.HashMap Name ConstantInfo := {}
++  let mut same := 0
++  let mut bad : Array Name := #[]
++  for part in res do
++    for (_, (fresh, s, b)) in part do
++      same := same + s
++      for i in fresh do
++        let (n, ci) := arr[i]!
++        out := out.insert n ci
++      for i in b do bad := bad.push arr[i]!.1
++  return (out, same, bad)
++
++/-- First name (if any) referenced by a safe constant of `m` and not declared in `m`. Parallel, pure. -/
++def firstUnclosed (m : Std.HashMap Name ConstantInfo) (nthreads : Nat) : IO (Option (Name × Name)) := do
++  let arr := m.toArray
++  let (nchunks, csz) := chunks arr.size nthreads
++  let res ← parallelFor nthreads nchunks fun c => Id.run do
++    let lo := c * csz
++    let hi := min arr.size (lo + csz)
++    for i in [lo:hi] do
++      let (n, ci) := arr[i]!
++      if !ci.isUnsafe && !ci.isPartial then
++        for r in refsOf ci do
++          if !m.contains r then return some (n, r)
++    return none
++  for part in res do
++    for (_, r) in part do
++      if let some x := r then return some x
++  return none
++
++/-- Dense ids of `arr`'s names and, per constant, the ids of its `refsOf` names that are in `arr` and (for `seedOf`) a
++flag computed from the names that are not (parallel). -/
++def depGraph (arr : Array (Name × ConstantInfo)) (nthreads : Nat) (outside : Name → Bool := fun _ => false) :
++    IO (Std.HashMap Name Nat × Array (Array Nat) × ByteArray) := do
++  let mut ids : Std.HashMap Name Nat := Std.HashMap.emptyWithCapacity arr.size
++  for h : i in [0:arr.size] do ids := ids.insert arr[i].1 i
++  let (nchunks, csz) := chunks arr.size nthreads
++  let res ← parallelFor nthreads nchunks fun c => Id.run do
++    let lo := c * csz
++    let hi := min arr.size (lo + csz)
++    let mut ins : Array (Array Nat) := #[]
++    let mut flags : Array Bool := #[]
++    for i in [lo:hi] do
++      let mut a : Array Nat := #[]
++      let mut fl := false
++      let ci := arr[i]!.2
++      let safe := !ci.isUnsafe && !ci.isPartial
++      for r in refsOf ci do
++        match ids[r]? with
++        | some j => a := a.push j
++        | none => if safe && outside r then fl := true
++      ins := ins.push a
++      flags := flags.push fl
++    return (ins, flags)
++  let mut parts : Array (Array (Array Nat) × Array Bool) := Array.replicate nchunks (#[], #[])
++  for part in res do
++    for (c, x) in part do parts := parts.set! c x
++  let mut deps : Array (Array Nat) := Array.mkEmpty arr.size
++  let mut flags := ByteArray.mk (Array.replicate arr.size 0)
++  for (a, f) in parts do
++    for k in [0:a.size] do
++      if f[k]! then flags := flags.set! deps.size 1
++      deps := deps.push a[k]!
++  if deps.size != arr.size then throw <| .userError "internal error: dependency graph size"
++  return (ids, deps, flags)
++
++/-- Ids that reach a seed (including the seeds) through `deps` edges (i -> deps[i]), i.e. the transitive dependents. -/
++def reachRev (deps : Array (Array Nat)) (seeds : Array Nat) : ByteArray := Id.run do
++  let n := deps.size
++  let mut start : Array Nat := Array.replicate (n + 1) 0
++  for d in deps do
++    for j in d do start := start.set! (j + 1) (start[j + 1]! + 1)
++  for i in [0:n] do start := start.set! (i + 1) (start[i + 1]! + start[i]!)
++  let mut fill := start
++  let mut adj : Array Nat := Array.replicate start[n]! 0
++  for h : i in [0:n] do
++    for j in deps[i] do
++      adj := adj.set! fill[j]! i
++      fill := fill.set! j (fill[j]! + 1)
++  let mut seen := ByteArray.mk (Array.replicate n 0)
++  let mut stack := seeds
++  while !stack.isEmpty do
++    let j := stack.back!
++    stack := stack.pop
++    if seen.get! j == 0 then
++      seen := seen.set! j 1
++      for k in [start[j]!:start[j + 1]!] do
++        let i := adj[k]!
++        if seen.get! i == 0 then stack := stack.push i
++  return seen
++
++/-- Ids reachable from the seeds (including them) along `deps` edges, i.e. the transitive dependencies. -/
++def reachFwd (deps : Array (Array Nat)) (seeds : Array Nat) : ByteArray := Id.run do
++  let mut seen := ByteArray.mk (Array.replicate deps.size 0)
++  let mut stack := seeds
++  while !stack.isEmpty do
++    let j := stack.back!
++    stack := stack.pop
++    if seen.get! j == 0 then
++      seen := seen.set! j 1
++      for i in deps[j]! do
++        if seen.get! i == 0 then stack := stack.push i
++  return seen
++
++/-- The quotient post-check of `checkExport`: every quotient constant of `m` that `pick` selects is in `env`, unchanged. -/
++def quotPostCheck (m : Std.HashMap Name ConstantInfo) (env : Kernel.Environment) (pick : Name → Bool := fun _ => true) :
++    Except String Unit := do
++  for q in `Quot :: quotTargets do
++    if pick q then
++      if let some info := m[q]? then
++        let some info' := env.find? q | throw s!"Could not find quotient constant in final kernel env: {q}"
++        if info != info' then throw s!"Quotient constant mismatch on: {q}"
++
++/-- Replay `fresh` (minus Quot.mk/lift/ind, added by `Quot`) on top of `env` with the unchanged parallel replay. -/
++def replayOnTop (env : Kernel.Environment) (fresh : Std.HashMap Name ConstantInfo) (nthreads : Nat) (verbose : Bool)
++    (prio : NameSet := {}) (cancel? : Option IO.CancelToken := none) : IO Kernel.Environment :=
++  PChk.replayPar (quotTargets.foldl (init := fresh) (·.erase ·)) env nthreads verbose prio (cancel? := cancel?)
++
++/-- SNAPSHOT ingest (untrusted input): the constants of `m` that are new to `env`, do not conflict with `env`, and whose
++references are all in `env` or among these constants (fixpoint), are replayed on top of `env`; the others are left out
++(they are checked at the final step if the final export contains them). Returns the new env (or an error: env must then
++be kept unchanged) and (already checked, replayed, left out). -/
++def ingestSnapshot (env : Kernel.Environment) (m : Std.HashMap Name ConstantInfo) (nthreads : Nat) (verbose : Bool)
++    (label : String) (prio : NameSet := {}) (cancel? : Option IO.CancelToken := none) :
++    IO (Except String (Kernel.Environment × Nat × Nat × Array Name)) := do
++  let t0 ← IO.monoNanosNow
++  let (fresh, same, conflicts) ← splitAgainst env m nthreads
++  let arr := fresh.toArray
++  let conflictSet : NameSet := conflicts.foldl (·.insert ·) {}
++  -- seeds of exclusion: fresh constants referencing a conflicting name or a name that is neither fresh nor in env
++  let (_, deps, flags) ← depGraph arr nthreads (fun r => conflictSet.contains r || (env.find? r).isNone)
++  let mut seeds : Array Nat := #[]
++  for i in [0:arr.size] do
++    if flags.get! i != 0 then seeds := seeds.push i
++  let mut badB := if seeds.isEmpty then ByteArray.mk (Array.replicate arr.size 0) else reachRev deps seeds
++  let t1 ← IO.monoNanosNow
++  -- a kernel rejection names its declaration ("while replaying declaration 'X'"): leave X and its dependents out and
++  -- try the rest again (a few times; which subset is replayed only matters for speed, every replayed constant is checked)
++  let mut lastErr := ""
++  for _ in [0:4] do
++    let mut ok : Std.HashMap Name ConstantInfo := {}
++    let mut left : Array Name := #[]
++    for h : i in [0:arr.size] do
++      if badB.get! i == 0 then ok := ok.insert arr[i].1 arr[i].2 else left := left.push arr[i].1
++    try
++      let env' ← replayOnTop env ok nthreads verbose prio cancel?
++      match quotPostCheck m env' (fun q => ok.contains q || (env.find? q).isSome) with
++      | .error e => return .error s!"{label}: {e}"
++      | .ok () =>
++        if verbose then
++          IO.eprintln s!"[incr] {label}: {m.size} constants, {same} already checked, {ok.size} replayed, {left.size} left out ({conflicts.size} conflicts); split {(t1 - t0) / 1000000} ms, replay {((← IO.monoNanosNow) - t1) / 1000000} ms"
++        return .ok (env', same, ok.size, left)
++    catch e =>
++      lastErr := toString e
++      if let some c := cancel? then
++        if ← c.isSet then return .error s!"{label}: ingestion aborted for a final request"
++      let failed? := match lastErr.splitOn "while replaying declaration '" with
++        | _ :: rest :: _ => (rest.splitOn "'").head?
++        | _ => none
++      let some fs := failed? | break
++      let some fi := (List.range arr.size).find? (fun i => toString arr[i]!.1 == fs) | break
++      if badB.get! fi != 0 then break
++      IO.eprintln s!"[incr] {label}: kernel rejected '{fs}'; leaving it and its dependents out and retrying"
++      seeds := seeds.push fi
++      badB := reachRev deps seeds
++  return .error s!"{label}: replay failed: {lastErr}"
++
++/-- FINAL check of the final export `m` (closed: checked by the caller) against the checked environment `env`:
++  * constants of `m` equal to `env`'s are already checked;
++  * DIRTY = conflicting names (in `env` with another value) and every constant of `m` that transitively references
++    one of them; FRESH = constants of `m` not in `env`;
++  * FRESH \ DIRTY is replayed on top of `env` (giving `env1`);
++  * DIRTY is replayed on top of a separate environment `envD` that holds exactly `m`'s versions of the clean
++    constants DIRTY needs (taken from `env1`, where they are equal to `m`'s; inserted with the kernel's own insertion
++    function, the quotient constants by the checked `Quot` declaration);
++  * every kernel-implicit name present in `env1` must be declared in `m`; quotient post-check.
++Returns `none` on success, else the reason (the caller then runs the non-incremental check). -/
++def finalCheck (env : Kernel.Environment) (m : Std.HashMap Name ConstantInfo) (nthreads : Nat) (verbose : Bool)
++    (nsnap nok : Nat) (prio : NameSet := {}) : IO (Option String) := do
++  let t0 ← IO.monoNanosNow
++  let (fresh, same, conflicts) ← splitAgainst env m nthreads
++  -- a kernel-implicit constant (looked up WITHOUT a syntactic reference, e.g. `Nat` as the type of a raw literal) whose
++  -- checked version differs from B's would make the dirty set (syntactic dependents only) incomplete: no incremental path
++  if let some p := conflicts.find? (fun n => implicitNames.contains n) then
++    return some s!"the checked version of the kernel-implicit constant '{p}' differs from the final export's"
++  if !conflicts.isEmpty then
++    IO.eprintln s!"[incr] final: {conflicts.size} constants differ from their checked versions, e.g. {(conflicts.extract 0 20).toList}"
++  let marr := m.toArray
++  -- dependency graph of m, computed once: (1) closure: no safe constant references a name m does not declare;
++  -- (2) DIRTY = the transitive dependents of the conflicting names
++  let (ids, deps, outsideB) ← depGraph marr nthreads (fun _ => true)
++  for h : i in [0:outsideB.size] do
++    if outsideB.get! i != 0 then
++      let bad := (refsOf marr[i]!.2).toList.find? (fun r => !m.contains r)
++      return some s!"final export not closed: '{marr[i]!.1}' references '{(bad.map toString).getD "?"}', which it does not declare"
++  let dirtyB := if conflicts.isEmpty then ByteArray.mk (Array.replicate marr.size 0) else reachRev deps (conflicts.filterMap (ids[·]?))
++  let mut dirty : NameSet := {}
++  for h : i in [0:dirtyB.size] do
++    if dirtyB.get! i != 0 then dirty := dirty.insert marr[i]!.1
++  let freshClean := if dirty.isEmpty then fresh else dirty.foldl (init := fresh) (·.erase ·)
++  let t1 ← IO.monoNanosNow
++  try
++    let env1 ← replayOnTop env freshClean nthreads verbose prio
++    if let .error e := quotPostCheck m env1 (fun q => !dirty.contains q) then return some e
++    let t2 ← IO.monoNanosNow
++    if !dirty.isEmpty then
++      -- clean constants needed by DIRTY: its closure within m (m is closed), minus DIRTY
++      let mut dseeds : Array Nat := #[]
++      for i in [0:dirtyB.size] do
++        if dirtyB.get! i != 0 then dseeds := dseeds.push i
++      let closB := reachFwd deps dseeds
++      let mut need : NameSet := {}
++      let mut envD := (← Lean.mkEmptyEnvironment).toKernelEnv
++      let isQuot (n : Name) := n == `Quot || quotTargets.contains n
++      for h : i in [0:closB.size] do
++        if closB.get! i != 0 && dirtyB.get! i == 0 then
++          let n := marr[i]!.1
++          need := need.insert n
++          if !isQuot n then
++            let some ci := env1.find? n | return some s!"internal: clean constant {n} missing"
++            envD := kenvAdd envD ci
++      if need.contains `Quot then
++        match envD.addDeclCore 0 0 Declaration.quotDecl (cancelTk? := none) with
++        | .ok e => envD := e
++        | .error _ => return some "quotient declaration rejected while rebuilding the clean environment"
++        if let .error e := quotPostCheck m envD (fun q => need.contains q) then return some e
++      let dmap : Std.HashMap Name ConstantInfo := dirty.foldl (init := {}) fun acc n =>
++        match m[n]? with | some ci => acc.insert n ci | none => acc
++      let t3 ← IO.monoNanosNow
++      let envD' ← replayOnTop envD dmap nthreads verbose prio
++      IO.eprintln s!"[incr] final: clean environment of {need.size} constants built in {(t3 - t2) / 1000000} ms, {dmap.size} dirty constants replayed in {((← IO.monoNanosNow) - t3) / 1000000} ms"
++      if let .error e := quotPostCheck m envD' (fun q => dirty.contains q) then return some e
++      IO.eprintln s!"[incr] final: {conflicts.size} conflicting constants -> {dirty.size} re-checked against {need.size} clean ones in {((← IO.monoNanosNow) - t2) / 1000000} ms"
++    match implicitNames.find? (fun p => (env1.find? p).isSome && !m.contains p) with
++    | some p => return some s!"kernel-implicit constant '{p}' is in the checked environment but not in the final export"
++    | none => pure ()
++    IO.eprintln s!"[incr] final: {m.size} constants: {same} equal to checked ones ({nok} of {nsnap} snapshots ingested), {freshClean.size} fresh checked now, {dirty.size} dirty re-checked; split {(t1 - t0) / 1000000} ms, total {((← IO.monoNanosNow) - t0) / 1000000} ms"
++    return none
++  catch e =>
++    return some s!"final replay failed: {e}"
++
++end PChk.Incr
+diff --git a/PChk/Par.lean b/PChk/Par.lean
+index 972a87d..21e4f0d 100644
+--- a/PChk/Par.lean
++++ b/PChk/Par.lean
+@@ -447,7 +447,12 @@ def learnCapMs : Nat := 30000
+ 
+ /-- Parallel replay. Returns the final environment or throws like `Lean.Kernel.Environment.replay`. -/
+ def replayPar (newConstants : Std.HashMap Name ConstantInfo) (env : Kernel.Environment) (nthreads : Nat)
+-    (verbose := false) (prio : NameSet := {}) (logMinMs : Nat := 0) : IO Kernel.Environment := do
++    (verbose := false) (prio : NameSet := {}) (logMinMs : Nat := 0) (cancel? : Option IO.CancelToken := none) :
++    IO Kernel.Environment := do
++  -- S08: `cancel?` (the incremental leg's snapshot ingestion only) aborts the replay: every kernel call is interrupted
++  -- through the workers' own cancel tokens, jobs report `cancelled` (never a success), so replayPar throws (below: an
++  -- accept needs a positive success record for every job). A cancelled replay therefore never returns an environment.
++  let cancelled : IO Bool := match cancel? with | some c => c.isSet | none => pure false
+   let t0 ← IO.monoNanosNow
+   let log (msg : String) : IO Unit := do if verbose then IO.eprintln s!"[pchk {← nowMs t0} ms] {msg}"
+   let nw := max 1 nthreads
+@@ -503,132 +508,149 @@ def replayPar (newConstants : Std.HashMap Name ConstantInfo) (env : Kernel.Envir
+   -- walk's own duration); a cancelled learner just learns nothing.
+   let (lch, ltks, lws) ← startPool nw (fun tk j => learnInduct tk j) none (fun _ => false)
+   let cancelLearners : IO Unit := for t in ltks do t.set
+-  let isInd : Job → Bool := fun j => match j.kind with | .induct _ => true | .decl => false
+-  let tw0 ← IO.monoNanosNow
+-  let s1 ← try walk { ctx0 with emit := chanSend lch, emitFilter := isInd, batchSize := 1 }
+-    catch e => cancelLearners; chanCloseQuiet lch; throw e
+-  chanClose lch
+-  let tw1 ← IO.monoNanosNow
+-  log s!"walk 1 done, {s1.jobs.size} jobs"
+-  let learnDone ← IO.mkRef false
+-  let capNs := learnCapMs * 1000000 + 2 * (tw1 - tw0)
+-  let _watchdog ← IO.asTask (prio := .dedicated) do
+-    repeat
+-      if ← learnDone.get then break
+-      if (← IO.monoNanosNow) - tw1 > capNs then
+-        cancelLearners
+-        IO.eprintln "[pchk] inductive learning exceeded its time budget; remaining learners cancelled"
+-        break
+-      IO.sleep 20
+-  let mut overrides : Std.HashMap Name (Array ConstantInfo) := {}
+-  for w in lws do
+-    for (i, r?) in (← IO.ofExcept (← IO.wait w)).1 do
+-      if let some r := r? then
+-        if let some j := s1.jobs[i]? then overrides := overrides.insert j.name r
+-  learnDone.set true
+-  log s!"inductives learned, {overrides.size} blocks differ from the export"
+-  -- phase 2: walk with the learned records, every job streamed to the kernel workers as soon as it exists;
+-  -- all jobs are checked, inductive ones STRICTLY. The first kernel rejection or speculation failure decides the verdict
+-  -- (reject / official fallback), so it cancels all other kernel calls (liveness: later snapshots may contain the
+-  -- rejected declaration and loop where the official replay has already stopped).
+-  let ctx := { ctx0 with overrides }
+-  let decided : JobResult → Bool := fun | .kernelError _ => true | .specMismatch _ => true | _ => false
+-  -- S03: jobs of the declarations named in `prio` (a scheduling hint; order only) go to the priority channel, which
+-  -- every worker serves before the walk-order channel, so that known-expensive kernel calls start as soon as the walk
+-  -- reaches them instead of queueing behind every earlier job. Every job is still checked exactly once and the verdict
+-  -- below is computed exactly as before.
+-  let (ch, pch, tks, workers) ← startPools nw (fun tk j => runJob tk j) .cancelled decided (logMinMs * 1000000)
+-  let chs := #[ch, pch]
+-  let isPrio : Name → Bool := fun n => !prio.isEmpty && prio.contains n
+-  let s ← try
+-      if overrides.isEmpty then do
+-        -- nothing to re-learn: the phase-1 walk is the final walk; re-send its jobs (consecutive non-priority jobs in
+-        -- batches of at most 64, priority jobs alone on the priority channel)
+-        let mut start := 0
+-        let mut batch : Array Job := #[]
+-        for h : i in [0:s1.jobs.size] do
+-          let j := s1.jobs[i]
+-          if isPrio j.name then
+-            if !batch.isEmpty then
+-              chanSend ch (start, batch)
+-              batch := #[]
+-            chanSend pch (i, #[j])
++  -- S08: worker tokens of phase 2, known once its pools exist; a watcher forwards `cancel?` to every token
++  let p2tks ← IO.mkRef (#[] : Array IO.CancelToken)
++  let replayDone ← IO.mkRef false
++  if let some c := cancel? then
++    let _cw ← IO.asTask (prio := .dedicated) do
++      repeat
++        if ← replayDone.get then break
++        if ← c.isSet then
++          cancelLearners
++          for t in ← p2tks.get do t.set
++        IO.sleep 50
++  try
++    let isInd : Job → Bool := fun j => match j.kind with | .induct _ => true | .decl => false
++    let tw0 ← IO.monoNanosNow
++    let s1 ← try walk { ctx0 with emit := chanSend lch, emitFilter := isInd, batchSize := 1 }
++      catch e => cancelLearners; chanCloseQuiet lch; throw e
++    chanClose lch
++    let tw1 ← IO.monoNanosNow
++    log s!"walk 1 done, {s1.jobs.size} jobs"
++    let learnDone ← IO.mkRef false
++    let capNs := learnCapMs * 1000000 + 2 * (tw1 - tw0)
++    let _watchdog ← IO.asTask (prio := .dedicated) do
++      repeat
++        if ← learnDone.get then break
++        if (← IO.monoNanosNow) - tw1 > capNs then
++          cancelLearners
++          IO.eprintln "[pchk] inductive learning exceeded its time budget; remaining learners cancelled"
++          break
++        IO.sleep 20
++    let mut overrides : Std.HashMap Name (Array ConstantInfo) := {}
++    for w in lws do
++      for (i, r?) in (← IO.ofExcept (← IO.wait w)).1 do
++        if let some r := r? then
++          if let some j := s1.jobs[i]? then overrides := overrides.insert j.name r
++    learnDone.set true
++    log s!"inductives learned, {overrides.size} blocks differ from the export"
++    -- phase 2: walk with the learned records, every job streamed to the kernel workers as soon as it exists;
++    -- all jobs are checked, inductive ones STRICTLY. The first kernel rejection or speculation failure decides the verdict
++    -- (reject / official fallback), so it cancels all other kernel calls (liveness: later snapshots may contain the
++    -- rejected declaration and loop where the official replay has already stopped).
++    let ctx := { ctx0 with overrides }
++    let decided : JobResult → Bool := fun | .kernelError _ => true | .specMismatch _ => true | _ => false
++    -- S03: jobs of the declarations named in `prio` (a scheduling hint; order only) go to the priority channel, which
++    -- every worker serves before the walk-order channel, so that known-expensive kernel calls start as soon as the walk
++    -- reaches them instead of queueing behind every earlier job. Every job is still checked exactly once and the verdict
++    -- below is computed exactly as before.
++    if ← cancelled then
++      throw <| .userError "replay cancelled"
++    let (ch, pch, tks, workers) ← startPools nw (fun tk j => runJob tk j) .cancelled decided (logMinMs * 1000000)
++    p2tks.set tks
++    let chs := #[ch, pch]
++    let isPrio : Name → Bool := fun n => !prio.isEmpty && prio.contains n
++    let s ← try
++        if overrides.isEmpty then do
++          -- nothing to re-learn: the phase-1 walk is the final walk; re-send its jobs (consecutive non-priority jobs in
++          -- batches of at most 64, priority jobs alone on the priority channel)
++          let mut start := 0
++          let mut batch : Array Job := #[]
++          for h : i in [0:s1.jobs.size] do
++            let j := s1.jobs[i]
++            if isPrio j.name then
++              if !batch.isEmpty then
++                chanSend ch (start, batch)
++                batch := #[]
++              chanSend pch (i, #[j])
++            else
++              if batch.isEmpty then start := i
++              batch := batch.push j
++              if batch.size >= 64 then
++                chanSend ch (start, batch)
++                batch := #[]
++          if !batch.isEmpty then chanSend ch (start, batch)
++          pure s1
++        else walk { ctx with emit := chanSend ch, isPrio, prioEmit := chanSend pch }
++      catch e => (for t in tks do t.set); (for c in chs do chanCloseQuiet c); throw e
++    for c in chs do chanClose c
++    log s!"walk 2 done, {s.jobs.size} jobs"
++    let jobs := s.jobs
++    let postponed : Option IO.Error ← try
++        let _ ← StateRefT'.run (s := s) do
++          ReaderT.run (r := ctx) do
++            checkPostponedConstructors
++            checkPostponedRecursors
++        pure none
++      catch e => pure (some e)
++    let mut res := #[]
++    let mut stats : Array WorkerStats := #[]
++    for w in workers do
++      let (out, ws) ← IO.ofExcept (← IO.wait w)
++      res := res.push out
++      stats := stats.push ws
++    log "checks done"
++    if verbose && !stats.isEmpty then
++      let fmin := stats.foldl (fun m w => min m w.finish) stats[0]!.finish
++      let fmax := stats.foldl (fun m w => max m w.finish) 0
++      let big := stats.foldl (fun (m : WorkerStats) w => if w.maxDur > m.maxDur then w else m) {}
++      log s!"workers finished between {(fmin - t0) / 1000000} and {(fmax - t0) / 1000000} ms; longest job {big.maxDur / 1000000} ms ({(jobs[big.maxIdx]?.map (·.name)).getD .anonymous}, walk index {big.maxIdx} of {jobs.size})"
++    if verbose && logMinMs > 0 then
++      let slow := (stats.foldl (fun acc w => acc ++ w.slow) #[]).qsort (fun a b => a.2.2 > b.2.2)
++      for (i, a, d) in slow do
++        IO.eprintln s!"[pchk-slow] {d / 1000000} ms start {(a - t0) / 1000000} ms walk index {i} {(jobs[i]?.map (·.name)).getD .anonymous}{if isPrio ((jobs[i]?.map (·.name)).getD .anonymous) then " [prio]" else ""}"
++    let mut firstErr : Option (Nat × Kernel.Exception) := none
++    let mut spec : Option (Nat × String) := none
++    -- ACCEPT needs a POSITIVE record of success for every job (hardening suggested by C03): a lost result can only reject
++    let mut okSeen := ByteArray.mk (Array.replicate jobs.size 0)
++    let mut nOk := 0
++    for out in res do
++      for (i, r) in out do
++        match r with
++        | .ok =>
++          if i < jobs.size && okSeen.get! i == 0 then
++            okSeen := okSeen.set! i 1
++            nOk := nOk + 1
+           else
+-            if batch.isEmpty then start := i
+-            batch := batch.push j
+-            if batch.size >= 64 then
+-              chanSend ch (start, batch)
+-              batch := #[]
+-        if !batch.isEmpty then chanSend ch (start, batch)
+-        pure s1
+-      else walk { ctx with emit := chanSend ch, isPrio, prioEmit := chanSend pch }
+-    catch e => (for t in tks do t.set); (for c in chs do chanCloseQuiet c); throw e
+-  for c in chs do chanClose c
+-  log s!"walk 2 done, {s.jobs.size} jobs"
+-  let jobs := s.jobs
+-  let postponed : Option IO.Error ← try
+-      let _ ← StateRefT'.run (s := s) do
+-        ReaderT.run (r := ctx) do
+-          checkPostponedConstructors
+-          checkPostponedRecursors
+-      pure none
+-    catch e => pure (some e)
+-  let mut res := #[]
+-  let mut stats : Array WorkerStats := #[]
+-  for w in workers do
+-    let (out, ws) ← IO.ofExcept (← IO.wait w)
+-    res := res.push out
+-    stats := stats.push ws
+-  log "checks done"
+-  if verbose && !stats.isEmpty then
+-    let fmin := stats.foldl (fun m w => min m w.finish) stats[0]!.finish
+-    let fmax := stats.foldl (fun m w => max m w.finish) 0
+-    let big := stats.foldl (fun (m : WorkerStats) w => if w.maxDur > m.maxDur then w else m) {}
+-    log s!"workers finished between {(fmin - t0) / 1000000} and {(fmax - t0) / 1000000} ms; longest job {big.maxDur / 1000000} ms ({(jobs[big.maxIdx]?.map (·.name)).getD .anonymous}, walk index {big.maxIdx} of {jobs.size})"
+-  if verbose && logMinMs > 0 then
+-    let slow := (stats.foldl (fun acc w => acc ++ w.slow) #[]).qsort (fun a b => a.2.2 > b.2.2)
+-    for (i, a, d) in slow do
+-      IO.eprintln s!"[pchk-slow] {d / 1000000} ms start {(a - t0) / 1000000} ms walk index {i} {(jobs[i]?.map (·.name)).getD .anonymous}{if isPrio ((jobs[i]?.map (·.name)).getD .anonymous) then " [prio]" else ""}"
+-  let mut firstErr : Option (Nat × Kernel.Exception) := none
+-  let mut spec : Option (Nat × String) := none
+-  -- ACCEPT needs a POSITIVE record of success for every job (hardening suggested by C03): a lost result can only reject
+-  let mut okSeen := ByteArray.mk (Array.replicate jobs.size 0)
+-  let mut nOk := 0
+-  for out in res do
+-    for (i, r) in out do
+-      match r with
+-      | .ok =>
+-        if i < jobs.size && okSeen.get! i == 0 then
+-          okSeen := okSeen.set! i 1
+-          nOk := nOk + 1
+-        else
+-          throw <| .userError s!"internal error: job {i} reported twice or out of range"
+-      | .kernelError ex =>
+-        match firstErr with
+-        | some (k, _) => if i < k then firstErr := some (i, ex)
+-        | none => firstErr := some (i, ex)
+-      | .specMismatch msg =>
+-        match spec with
+-        | some (k, _) => if i < k then spec := some (i, msg)
+-        | none => spec := some (i, msg)
+-      | .cancelled => pure ()   -- only jobs AFTER a deciding job (index-aware cancellation); never a success
+-  -- The FIRST deciding job in walk order decides (every job before it ran to completion and succeeded, so its
+-  -- snapshot is the official environment): speculation failure => official sequential replay; kernel error => reject.
+-  let specFirst : Bool := match spec, firstErr with
+-    | some (k, _), some (i, _) => k < i
+-    | some _, none => true
+-    | none, _ => false
+-  if specFirst then
+-    let msg := (spec.map (·.2)).getD ""
+-    -- never happens for a genuine export; redo everything with the official sequential replay
+-    IO.eprintln s!"[pchk] inductive speculation failed ({msg}); falling back to the sequential Lean.Replay"
+-    return ← env.replay newConstants
+-  if let some (i, ex) := firstErr then
+-    let msg ← (ex.toMessageData {} |>.toString)
+-    throw <| .userError s!"while replaying declaration '{(jobs[i]?.map (·.name)).getD .anonymous}':\n{msg}"
+-  if let some e := postponed then throw e
+-  if nOk != jobs.size then
+-    throw <| .userError s!"internal error: only {nOk} of {jobs.size} kernel checks reported success"
+-  return s.env
++            throw <| .userError s!"internal error: job {i} reported twice or out of range"
++        | .kernelError ex =>
++          match firstErr with
++          | some (k, _) => if i < k then firstErr := some (i, ex)
++          | none => firstErr := some (i, ex)
++        | .specMismatch msg =>
++          match spec with
++          | some (k, _) => if i < k then spec := some (i, msg)
++          | none => spec := some (i, msg)
++        | .cancelled => pure ()   -- only jobs AFTER a deciding job (index-aware cancellation); never a success
++    -- The FIRST deciding job in walk order decides (every job before it ran to completion and succeeded, so its
++    -- snapshot is the official environment): speculation failure => official sequential replay; kernel error => reject.
++    let specFirst : Bool := match spec, firstErr with
++      | some (k, _), some (i, _) => k < i
++      | some _, none => true
++      | none, _ => false
++    if specFirst then
++      let msg := (spec.map (·.2)).getD ""
++      -- never happens for a genuine export; redo everything with the official sequential replay
++      IO.eprintln s!"[pchk] inductive speculation failed ({msg}); falling back to the sequential Lean.Replay"
++      return ← env.replay newConstants
++    if let some (i, ex) := firstErr then
++      let msg ← (ex.toMessageData {} |>.toString)
++      throw <| .userError s!"while replaying declaration '{(jobs[i]?.map (·.name)).getD .anonymous}':\n{msg}"
++    if let some e := postponed then throw e
++    if nOk != jobs.size then
++      throw <| .userError s!"internal error: only {nOk} of {jobs.size} kernel checks reported success"
++    return s.env
++  finally
++    replayDone.set true
+ 
+ end PChk

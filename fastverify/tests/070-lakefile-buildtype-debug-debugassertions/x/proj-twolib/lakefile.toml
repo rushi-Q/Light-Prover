@@ -1,0 +1,15 @@
+name = "mini"
+srcDir = "src"
+defaultTargets = ["A"]
+
+[[lean_lib]]
+name = "A"
+roots = ["Main"]
+globs = ["Main", "Util"]
+
+[[lean_lib]]
+name = "B"
+roots = ["Util"]
+
+[lean_lib.leanOptions]
+autoImplicit = false

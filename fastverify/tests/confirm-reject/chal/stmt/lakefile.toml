@@ -1,0 +1,5 @@
+name = "stmtchal"
+defaultTargets = ["Challenge"]
+
+[[lean_lib]]
+name = "Challenge"

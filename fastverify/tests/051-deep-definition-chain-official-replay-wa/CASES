@@ -1,0 +1,4 @@
+# 051: deep definition chain: the official replay walk runs out of stack (REJECT, recorded '*': ~8 min) -> fast must reject/decline
+control-100k | toy/good/challenge.export | - | @/rh5-nanoda.json | 0  | gen:../gen-chain-100k.sh
+chain-8M     | toy/good/challenge.export | - | @/rh5-nanoda.json | 1* | gen:../gen-chain.sh
+chain-10M    | toy/good/challenge.export | - | @/rh5-nanoda.json | 1* | gen:../gen-chain-10M.sh

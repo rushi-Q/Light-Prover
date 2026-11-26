@@ -1,0 +1,46 @@
+{
+ "lean": {
+  "argv": [
+   "/scratch/fastverify-next/sound/53957eed/pleanchecker",
+   "-j{threads}",
+   "-v",
+   "--from-export",
+   "{export}"
+  ],
+  "env": {
+   "LEAN_ABORT_ON_PANIC": "1",
+   "LEAN_NUM_THREADS": "{threads}",
+   "LEAN_STACK_SIZE_KB": "917376",
+   "PCHK_PRIO_FILE": "{here}/legs/empty.hints",
+   "PCHK_SLOW_MS": "10000"
+  }
+ },
+ "k2": {
+  "argv": [
+   "/scratch/fastverify-next/gruszka/ece04e74/gruszka",
+   "{export}",
+   "{threads}"
+  ],
+  "env": {}
+ },
+ "ro": [
+  "/scratch/fastverify-next",
+  "{here}/legs/empty.hints",
+  "$ELAN_HOME/toolchains/leanprover--lean4---v4.36.0"
+ ],
+ "comment": "pins.env portable-v1 legs (pleanchecker ef138071, gruszka 3eb3aadd) exactly as check-sound.sh v2.3-H runs them without --hints, + the default-on veto-only extra kernel con-leche 8fff3f05 (--verified, jobs min(T,64))",
+ "extra": {
+  "con-leche": {
+   "argv": [
+    "/scratch/fastverify-next/extra-kernels/8fff3f05/con-leche",
+    "--verified",
+    "--jobs={kjobs}",
+    "--",
+    "{export}"
+   ],
+   "env": {
+    "LEAN_ABORT_ON_PANIC": "1"
+   }
+  }
+ }
+}

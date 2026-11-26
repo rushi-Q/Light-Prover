@@ -1,0 +1,5 @@
+name = "okchal"
+defaultTargets = ["Challenge"]
+
+[[lean_lib]]
+name = "Challenge"

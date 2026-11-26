@@ -1,0 +1,5 @@
+con-leche: stats: phases: parse 0.0s (index 0.0s), check 0.0s
+con-leche: stats: check pool: 0.023s wall, 4 workers, 170 records, busy 0.039s (41.9%); tail 0.015s after the last start, 4 busy then, 0.016s worker-time in it (27.0%)
+con-leche: stats: slowest checks: 0.016s def Nat.mod (#150); 0.002s def Bool.Reflects.match_1 (#24); 0.001s def Nat.shiftLeft (#167); 0.000s def _private.Init.Prelude.0.Nat.le_trans.match_1_10 (#118); 0.000s def _private.Init.Prelude.0.Nat.succ_le_succ.match_1_7 (#72)
+con-leche: stats: peak RSS 0.03 GiB
+con-leche: invalid: the kernel refused to evaluate `Nat.shiftLeft` because its second argument does not fit in a 32-bit unsigned integer [at theorem badShiftCount, fold position 169] (--verified) t=0.0s

@@ -1,0 +1,8 @@
+# case official_rc official_export_sha256[:16]  (from a live official run; matches the values recorded with the reproduction)
+# (F1 t1, V3 clean room on release a17abf1) official = the comparator's `lake build Main` (Lean 4.36 Check.lean:733): proj-exe's
+# lean_exe link error, proj-target's unknown default target and proj-nodefault's empty default build are not part of the verdict -> 0
+proj-exe 0 afac90272d10b6b5
+proj-pre 0 f1e4273858395828
+proj-target 0 afac90272d10b6b5
+proj-config 1 -
+proj-nodefault 0 afac90272d10b6b5

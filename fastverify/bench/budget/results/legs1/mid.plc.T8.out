@@ -1,0 +1,12 @@
+[pchk] read 1835 ms, markPersistent 9 ms
+[pchk] parse 1845 ms, 112954 constants
+[pchk 75 ms] remaining built, 112951 constants
+[pchk 853 ms] deps done
+[pchk 1286 ms] walk 1 done, 109167 jobs
+[pchk 1683 ms] inductives learned, 786 blocks differ from the export
+[pchk 2192 ms] walk 2 done, 109167 jobs
+[pchk 39344 ms] checks done
+[pchk 39344 ms] workers finished between 38986 and 39343 ms; longest job 3718 ms (AlgebraicGeometry.ProjectiveSpectrum.Proj.awayToΓ_ΓToStalk, walk index 82113 of 109167)
+[pchk] replay done at 41332 ms
+Lean default kernel accepts the solution
+{"name":"lg-mid.plc.T8","limits":{"memory_max":"max","memory_high":"max","swap_max":"0","cpus":"8-15","cpu_quota_pct":""},"exit":0,"wall_s":41.452108876,"memory_peak":2369056768,"sampled_max":{"current":2353283072,"anon":2134089728,"file":8192,"shmem":0},"memory_events":{"low":0,"high":0,"max":0,"oom":0,"oom_kill":0,"oom_group_kill":0,"sock_throttled":0},"cpu_stat":{"usage_usec":317895115,"user_usec":315119896,"system_usec":2775219,"nice_usec":0,"core_sched.force_idle_usec":0,"nr_periods":0,"nr_throttled":0,"throttled_usec":0,"nr_bursts":0,"burst_usec":0},"pids_peak":28,"host":"host1","cmd":["env", "-i", "PATH=/usr/bin:/bin", "LANG=C.UTF-8", "LEAN_ABORT_ON_PANIC=1", "PCHK_SLOW_MS=10000", "LEAN_STACK_SIZE_KB=917376", "LEAN_NUM_THREADS=8", "/scratch/fastverify-next/checkS/s03h/pleanchecker", "-j8", "-v", "/scratch/bench-inputs/rh-mid/solution.export"]}

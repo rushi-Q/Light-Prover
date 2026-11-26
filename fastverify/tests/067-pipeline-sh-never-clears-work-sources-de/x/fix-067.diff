@@ -1,0 +1,25 @@
+diff --color -ru -x native.txt -x pkgmode.txt -x __pycache__ $LIGHT_LEAN/fastverify/pipeline/pipeline.sh pipe/pipeline.sh
+--- $LIGHT_LEAN/fastverify/pipeline/pipeline.sh
++++ pipe/pipeline.sh
+@@ -24,6 +24,9 @@
+ ts() { echo "[$(date -u +%FT%TZ)] +$(echo "$(date +%s.%N) - $T0" | bc | cut -c1-7)s $*"; }
+ JOBS=$(( NT > 16 ? NT - 8 : NT )); [ -f "$D/jobs.txt" ] && JOBS=$(cat "$D/jobs.txt")
+ PJ=$(( NT < 64 ? NT : 64 ))
++# fix-067: nothing from an earlier run into the same WORK may influence this run (stale sources/oleans, appended
++# sched.log with an old "EXIT 0", old native.ready / solution.export)
++rm -rf "$W/proj" "$W/tcw" "$W/solution.export" "$W/log/bin" "$W/log/native" "$W/log/native.ready" "$W/log/sched.log"
+ mkdir -p "$W/proj/.lake" "$W/log/bin"
+ ts "start jobs=$JOBS nproc=$(nproc) LEAN_TC=${LEAN_TC:-official} LEAN4EXPORT_BIN=${LEAN4EXPORT_BIN:-official}"
+ 
+diff --color -ru -x native.txt -x pkgmode.txt -x __pycache__ $LIGHT_LEAN/fastverify/pipeline/sched_r.py pipe/sched_r.py
+--- $LIGHT_LEAN/fastverify/pipeline/sched_r.py
++++ pipe/sched_r.py
+@@ -155,7 +155,7 @@
+     running = {}            # pid -> dict(m, t0, outp, olean, released, native)
+     released = set()
+     done, failed, blocked = 0, 0, set()
+-    log = open(os.path.join(LOGD, 'sched.log'), 'a', buffering=1)
++    log = open(os.path.join(LOGD, 'sched.log'), 'w', buffering=1)   # fix-067: never append
+     recs = open(os.path.join(LOGD, 'modules.jsonl'), 'a', buffering=1)
+     stats = open(os.path.join(LOGD, 'sched_stats.tsv'), 'a', buffering=1)
+     log.write(f'START {t_start:.3f} modules={N} edges={sum(len(v) for v in deps.values())} graph_s={t_graph:.1f} jobs={jobs} cores={NCORES} reserved={K} '

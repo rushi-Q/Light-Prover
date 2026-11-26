@@ -1,0 +1,5 @@
+con-leche: stats: phases: parse 0.0s (index 0.0s), check 0.0s
+con-leche: stats: check pool: 0.022s wall, 4 workers, 170 records, busy 0.044s (49.5%); tail 0.015s after the last start, 4 busy then, 0.016s worker-time in it (27.7%)
+con-leche: stats: slowest checks: 0.015s def Nat.mod (#150); 0.002s def Bool.Reflects.match_1 (#24); 0.001s def Nat.shiftLeft (#167); 0.000s def _private.Init.Prelude.0.Nat.le_trans.match_1_10 (#118); 0.000s theorem Nat.succ_sub_succ_eq_sub (#140)
+con-leche: stats: peak RSS 0.03 GiB
+con-leche: invalid: the kernel refused a `Nat` numeral because its size exceeds the maximum; raise it with --max-nat-size [at theorem badShift256MiB, fold position 169] (--verified) t=0.0s

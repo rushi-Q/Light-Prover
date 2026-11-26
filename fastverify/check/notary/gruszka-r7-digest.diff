@@ -1,0 +1,581 @@
+diff -ruN r7a/src/env_digest.rs r7b/src/env_digest.rs
+--- /dev/null
++++ b/src/env_digest.rs
+@@ -0,0 +1,551 @@
++//! PLAN R7 Canonical Environment SHA-256 Digest (`fv-env-sha256-v1`) for gruszka (D13, Team D).
++//!
++//! Computes the exact same FIPS 180-4 SHA-256 Merkle DAG root over `env.consts` (including
++//! lazy `ThmVal::Block` proof terms decoded per worker thread) as `ccmp-notary` and
++//! `pleanchecker-notary`. Zero external crate dependencies (builds 100% offline).
++
++use crate::env::{self, CKind, Env, Hint, LitVal, ThmVal};
++use std::sync::OnceLock;
++use std::time::Instant;
++use susz::canon::Part;
++use susz::read::{Expr, Ref};
++
++fn sha256_k() -> &'static [u32; 64] {
++    static K: OnceLock<[u32; 64]> = OnceLock::new();
++    K.get_or_init(|| {
++        let mut out = [0u32; 64];
++        let mut idx = 0usize;
++        let mut p = 2u32;
++        while idx < 64 {
++            let mut is_p = true;
++            let mut d = 2u32;
++            while d * d <= p {
++                if p % d == 0 {
++                    is_p = false;
++                    break;
++                }
++                d += 1;
++            }
++            if is_p {
++                out[idx] = ((p as f64).cbrt().fract() * 4294967296.0) as u32;
++                idx += 1;
++            }
++            p += 1;
++        }
++        out
++    })
++}
++
++fn sha256_h0() -> &'static [u32; 8] {
++    static H0: OnceLock<[u32; 8]> = OnceLock::new();
++    H0.get_or_init(|| {
++        let primes = [2u32, 3, 5, 7, 11, 13, 17, 19];
++        let mut out = [0u32; 8];
++        for (i, &p) in primes.iter().enumerate() {
++            out[i] = ((p as f64).sqrt().fract() * 4294967296.0) as u32;
++        }
++        out
++    })
++}
++
++struct Sha256 {
++    state: [u32; 8],
++    bitlen: u64,
++    buf: [u8; 64],
++    buflen: usize,
++}
++
++impl Sha256 {
++    #[inline]
++    fn new() -> Self {
++        Self { state: *sha256_h0(), bitlen: 0, buf: [0u8; 64], buflen: 0 }
++    }
++
++    fn compress(&mut self, block: &[u8; 64]) {
++        let k = sha256_k();
++        let mut w = [0u32; 64];
++        for i in 0..16 {
++            w[i] = u32::from_be_bytes([block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]]);
++        }
++        for i in 16..64 {
++            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
++            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
++            w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
++        }
++        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = self.state;
++        for i in 0..64 {
++            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
++            let ch = (e & f) ^ ((!e) & g);
++            let t1 = h.wrapping_add(s1).wrapping_add(ch).wrapping_add(k[i]).wrapping_add(w[i]);
++            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
++            let maj = (a & b) ^ (a & c) ^ (b & c);
++            let t2 = s0.wrapping_add(maj);
++            h = g; g = f; f = e; e = d.wrapping_add(t1);
++            d = c; c = b; b = a; a = t1.wrapping_add(t2);
++        }
++        let add = [a, b, c, d, e, f, g, h];
++        for i in 0..8 {
++            self.state[i] = self.state[i].wrapping_add(add[i]);
++        }
++    }
++
++    fn update(&mut self, data: &[u8]) {
++        self.bitlen = self.bitlen.wrapping_add((data.len() as u64) * 8);
++        let mut i = 0usize;
++        if self.buflen > 0 {
++            let need = 64 - self.buflen;
++            if data.len() < need {
++                self.buf[self.buflen..self.buflen + data.len()].copy_from_slice(data);
++                self.buflen += data.len();
++                return;
++            }
++            self.buf[self.buflen..64].copy_from_slice(&data[..need]);
++            let blk = self.buf;
++            self.compress(&blk);
++            self.buflen = 0;
++            i = need;
++        }
++        while i + 64 <= data.len() {
++            let blk: &[u8; 64] = data[i..i + 64].try_into().unwrap();
++            self.compress(blk);
++            i += 64;
++        }
++        if i < data.len() {
++            let rem = data.len() - i;
++            self.buf[..rem].copy_from_slice(&data[i..]);
++            self.buflen = rem;
++        }
++    }
++
++    fn finalize(mut self) -> [u8; 32] {
++        let bits = self.bitlen;
++        self.buf[self.buflen] = 0x80;
++        self.buflen += 1;
++        if self.buflen > 56 {
++            self.buf[self.buflen..64].fill(0);
++            let blk = self.buf;
++            self.compress(&blk);
++            self.buflen = 0;
++        }
++        self.buf[self.buflen..56].fill(0);
++        self.buf[56..64].copy_from_slice(&bits.to_be_bytes());
++        let blk = self.buf;
++        self.compress(&blk);
++        let mut out = [0u8; 32];
++        for i in 0..8 {
++            out[4 * i..4 * i + 4].copy_from_slice(&self.state[i].to_be_bytes());
++        }
++        out
++    }
++
++    #[inline]
++    fn u8(&mut self, v: u8) { self.update(&[v]); }
++    #[inline]
++    fn u32_le(&mut self, v: u32) { self.update(&v.to_le_bytes()); }
++    #[inline]
++    fn u64_le(&mut self, v: u64) { self.update(&v.to_le_bytes()); }
++    #[inline]
++    fn bytes(&mut self, b: &[u8]) {
++        self.u32_le(b.len() as u32);
++        if !b.is_empty() { self.update(b); }
++    }
++    #[inline]
++    fn nat_u64(&mut self, mut v: u64) {
++        let mut b = [0u8; 8];
++        let mut n = 0usize;
++        while v > 0 {
++            b[n] = (v & 0xff) as u8;
++            v >>= 8;
++            n += 1;
++        }
++        self.bytes(&b[..n]);
++    }
++    #[inline]
++    fn nat_le_bytes(&mut self, b: &[u8]) {
++        let mut end = b.len();
++        while end > 0 && b[end - 1] == 0 {
++            end -= 1;
++        }
++        self.bytes(&b[..end]);
++    }
++}
++
++fn sha256_selftest() -> bool {
++    let mut s = Sha256::new();
++    s.update(b"abc");
++    let got = s.finalize();
++    let hex = to_hex(&got);
++    hex == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
++}
++
++fn to_hex(h: &[u8; 32]) -> String {
++    const HEX: &[u8; 16] = b"0123456789abcdef";
++    let mut s = String::with_capacity(64);
++    for &b in h {
++        s.push(HEX[(b >> 4) as usize] as char);
++        s.push(HEX[(b & 0xf) as usize] as char);
++    }
++    s
++}
++
++#[inline]
++fn hash_block_expr(
++    e: &Expr<'_>,
++    env: &Env<'_>,
++    name_h: &[[u8; 32]],
++    lvl_h: &[[u8; 32]],
++    main_h: &[[u8; 32]],
++    local_h: &[[u8; 32]],
++) -> [u8; 32] {
++    let rf = |x: Ref| -> &[u8; 32] {
++        match x {
++            Ref::Main(i) => &main_h[i as usize],
++            Ref::Block(k) => &local_h[k as usize],
++        }
++    };
++    let mut s = Sha256::new();
++    match *e {
++        Expr::BVar(i) => {
++            s.u8(0x20);
++            s.nat_u64(i);
++        }
++        Expr::Sort(l) => {
++            s.u8(0x23);
++            s.update(&lvl_h[env.lvl_map[l as usize] as usize]);
++        }
++        Expr::Const(nm, ls) => {
++            s.u8(0x24);
++            s.update(&name_h[env.canon(nm) as usize]);
++            let cnt = ls.len() as u32;
++            s.u32_le(cnt);
++            for u in ls.iter() {
++                s.update(&lvl_h[env.lvl_map[u as usize] as usize]);
++            }
++        }
++        Expr::App(f, a) => {
++            s.u8(0x25);
++            s.update(rf(f));
++            s.update(rf(a));
++        }
++        Expr::Lam(bi, nm, ty, bd) => {
++            s.u8(0x26);
++            s.u8(bi);
++            s.update(&name_h[env.canon(nm) as usize]);
++            s.update(rf(ty));
++            s.update(rf(bd));
++        }
++        Expr::Pi(bi, nm, ty, bd) => {
++            s.u8(0x27);
++            s.u8(bi);
++            s.update(&name_h[env.canon(nm) as usize]);
++            s.update(rf(ty));
++            s.update(rf(bd));
++        }
++        Expr::Let(nm, ty, vl, bd) => {
++            s.u8(0x28);
++            s.update(&name_h[env.canon(nm) as usize]);
++            s.update(rf(ty));
++            s.update(rf(vl));
++            s.update(rf(bd));
++        }
++        Expr::Nat(bytes) => {
++            s.u8(0x29);
++            s.nat_le_bytes(bytes);
++        }
++        Expr::Str(st) => {
++            s.u8(0x2a);
++            s.bytes(st.as_bytes());
++        }
++        Expr::Proj(tn, idx, st) => {
++            s.u8(0x2d);
++            s.update(&name_h[env.canon(tn) as usize]);
++            s.nat_u64(idx);
++            s.update(rf(st));
++        }
++    }
++    s.finalize()
++}
++
++pub fn compute_and_write(env: &Env<'_>, workers: usize, out_path: &str) -> Result<(String, usize, u128), String> {
++    if !sha256_selftest() {
++        return Err("SHA-256 self-test failed".into());
++    }
++    let t0 = Instant::now();
++
++    // 1. Canonical names (topological order: pre[c] < c)
++    let cn = &env.st.canon;
++    let n_names = cn.count();
++    let mut name_h: Vec<[u8; 32]> = Vec::with_capacity(n_names);
++    {
++        let mut s = Sha256::new();
++        s.u8(0x01);
++        name_h.push(s.finalize());
++    }
++    for c in 1..n_names {
++        let pre = cn.pre[c] as usize;
++        let mut s = Sha256::new();
++        match cn.part(env.bytes, c as u32) {
++            Part::Str(b) => {
++                s.u8(0x02);
++                s.update(&name_h[pre]);
++                s.bytes(b);
++            }
++            Part::Num(k) => {
++                s.u8(0x03);
++                s.update(&name_h[pre]);
++                s.nat_u64(k);
++            }
++        }
++        name_h.push(s.finalize());
++    }
++
++    // 2. Global levels (topological order)
++    let n_lvls = env.lvl.len();
++    let mut lvl_h: Vec<[u8; 32]> = Vec::with_capacity(n_lvls);
++    for &(kind, a, b) in &env.lvl {
++        let mut s = Sha256::new();
++        match kind {
++            0 => s.u8(0x10),
++            1 => { s.u8(0x11); s.update(&lvl_h[a as usize]); }
++            2 => { s.u8(0x12); s.update(&lvl_h[a as usize]); s.update(&lvl_h[b as usize]); }
++            3 => { s.u8(0x13); s.update(&lvl_h[a as usize]); s.update(&lvl_h[b as usize]); }
++            4 => { s.u8(0x14); s.update(&name_h[a as usize]); }
++            _ => return Err(format!("unknown level kind {kind}")),
++        }
++        lvl_h.push(s.finalize());
++    }
++
++    // 3. MAIN expressions (single topological pass over env.main)
++    let main_n = env.main.n();
++    let mut main_h: Vec<[u8; 32]> = Vec::with_capacity(main_n.len());
++    for nd in main_n {
++        let mut s = Sha256::new();
++        match nd.kind {
++            env::BVAR => {
++                s.u8(0x20);
++                s.nat_u64(nd.p as u64);
++            }
++            env::SORT => {
++                s.u8(0x23);
++                s.update(&lvl_h[nd.p as usize]);
++            }
++            env::CONST => {
++                s.u8(0x24);
++                s.update(&name_h[env.canon(nd.a) as usize]);
++                if nd.p == 0 {
++                    s.u32_le(0);
++                } else {
++                    let off = nd.p as usize;
++                    let cnt = env.side.lvls[off] as usize;
++                    s.u32_le(cnt as u32);
++                    for &u in &env.side.lvls[off + 1..off + 1 + cnt] {
++                        s.update(&lvl_h[u as usize]);
++                    }
++                }
++            }
++            env::APP => {
++                s.u8(0x25);
++                s.update(&main_h[nd.a as usize]);
++                s.update(&main_h[nd.b as usize]);
++            }
++            k if env::is_lam(k) => {
++                s.u8(0x26);
++                s.u8(k - env::LAM);
++                s.update(&name_h[env.canon(nd.p) as usize]);
++                s.update(&main_h[nd.a as usize]);
++                s.update(&main_h[nd.b as usize]);
++            }
++            k if env::is_pi(k) => {
++                s.u8(0x27);
++                s.u8(k - env::PI);
++                s.update(&name_h[env.canon(nd.p) as usize]);
++                s.update(&main_h[nd.a as usize]);
++                s.update(&main_h[nd.b as usize]);
++            }
++            env::LET => {
++                let (nm, bd) = env.side.lets[nd.p as usize];
++                s.u8(0x28);
++                s.update(&name_h[env.canon(nm) as usize]);
++                s.update(&main_h[nd.a as usize]);
++                s.update(&main_h[nd.b as usize]);
++                s.update(&main_h[bd as usize]);
++            }
++            env::NAT => {
++                s.u8(0x29);
++                match &env.lits[nd.p as usize] {
++                    LitVal::Nat(big) => s.nat_le_bytes(&big.to_bytes_le()),
++                    _ => return Err("expected Nat literal".into()),
++                }
++            }
++            env::STR => {
++                s.u8(0x2a);
++                match &env.lits[nd.p as usize] {
++                    LitVal::Str(st) => s.bytes(st.as_bytes()),
++                    _ => return Err("expected Str literal".into()),
++                }
++            }
++            env::PROJ => {
++                s.u8(0x2d);
++                s.update(&name_h[env.canon(nd.p) as usize]);
++                s.nat_u64(nd.b as u64);
++                s.update(&main_h[nd.a as usize]);
++            }
++            other => return Err(format!("unknown expr kind {other}")),
++        }
++        main_h.push(s.finalize());
++    }
++
++    // 4. Parallel constant hashing (decoding lazy ThmVal::Block per worker thread)
++    let n_consts = env.consts.len();
++    let nw = workers.clamp(1, 64);
++    let chunk = n_consts.div_ceil(nw).max(1);
++    let name_h_ref = &name_h;
++    let lvl_h_ref = &lvl_h;
++    let main_h_ref = &main_h;
++
++    let parts: Result<Vec<Vec<[u8; 64]>>, String> = std::thread::scope(|sc| {
++        let mut hs = Vec::new();
++        for ch in env.consts.chunks(chunk) {
++            hs.push(sc.spawn(move || -> Result<Vec<[u8; 64]>, String> {
++                let mut out: Vec<[u8; 64]> = Vec::with_capacity(ch.len());
++                let mut local_h: Vec<[u8; 32]> = Vec::new();
++                for c in ch {
++                    let nh = name_h_ref[env.canon(c.name) as usize];
++                    let mut s = Sha256::new();
++                    let put_head = |s: &mut Sha256| {
++                        s.update(&nh);
++                        s.u32_le(c.lparams.len() as u32);
++                        for &lp in c.lparams.iter() {
++                            s.update(&name_h_ref[env.canon(lp) as usize]);
++                        }
++                        s.update(&main_h_ref[c.ty as usize]);
++                    };
++                    let put_nlist = |s: &mut Sha256, xs: &[u32]| {
++                        s.u32_le(xs.len() as u32);
++                        for &x in xs {
++                            s.update(&name_h_ref[env.canon(x) as usize]);
++                        }
++                    };
++                    match &c.kind {
++                        CKind::Axiom { unsafe_ } => {
++                            s.u8(0x40); put_head(&mut s); s.u8(*unsafe_ as u8);
++                        }
++                        CKind::Defn { value, hint, safety, all } => {
++                            s.u8(0x41); put_head(&mut s);
++                            s.update(&main_h_ref[*value as usize]);
++                            match *hint {
++                                Hint::Opaque => s.u8(0),
++                                Hint::Abbrev => s.u8(1),
++                                Hint::Regular(h) => { s.u8(2); s.u32_le(h); }
++                            }
++                            s.u8(*safety);
++                            put_nlist(&mut s, all);
++                        }
++                        CKind::Thm { value, all } => {
++                            let vh = match *value {
++                                ThmVal::Main(v) => main_h_ref[v as usize],
++                                ThmVal::Block(bi) => {
++                                    let b = env.blocks[bi as usize];
++                                    local_h.clear();
++                                    local_h.reserve(b.exprs as usize);
++                                    let r: Result<(), susz::read::Stop<()>> =
++                                        susz::read::decode_block(env.bytes, &env.st, b, |_k, e| {
++                                            let eh = hash_block_expr(e, env, name_h_ref, lvl_h_ref, main_h_ref, &local_h);
++                                            local_h.push(eh);
++                                            Ok(())
++                                        });
++                                    if let Err(e) = r {
++                                        return Err(format!("block decode error in digest: {e:?}"));
++                                    }
++                                    *local_h.last().ok_or_else(|| "empty proof block".to_string())?
++                                }
++                            };
++                            s.u8(0x42); put_head(&mut s);
++                            s.update(&vh);
++                            put_nlist(&mut s, all);
++                        }
++                        CKind::Opaque { value, unsafe_, all } => {
++                            s.u8(0x43); put_head(&mut s);
++                            s.update(&main_h_ref[*value as usize]);
++                            s.u8(*unsafe_ as u8);
++                            put_nlist(&mut s, all);
++                        }
++                        CKind::Quot { kind } => {
++                            s.u8(0x44); put_head(&mut s); s.u8(*kind);
++                        }
++                        CKind::Induct { nparams, nindices, all, ctors, nnested, is_rec, is_reflexive, unsafe_ } => {
++                            s.u8(0x45); put_head(&mut s);
++                            s.nat_u64(*nparams as u64);
++                            s.nat_u64(*nindices as u64);
++                            put_nlist(&mut s, all);
++                            put_nlist(&mut s, ctors);
++                            s.nat_u64(*nnested as u64);
++                            s.u8(*is_rec as u8);
++                            s.u8(*unsafe_ as u8);
++                            s.u8(*is_reflexive as u8);
++                        }
++                        CKind::Ctor { induct, cidx, nparams, nfields, unsafe_ } => {
++                            s.u8(0x46); put_head(&mut s);
++                            s.update(&name_h_ref[env.canon(*induct) as usize]);
++                            s.nat_u64(*cidx as u64);
++                            s.nat_u64(*nparams as u64);
++                            s.nat_u64(*nfields as u64);
++                            s.u8(*unsafe_ as u8);
++                        }
++                        CKind::Rec { all, nparams, nindices, nmotives, nminors, rules, k, unsafe_ } => {
++                            s.u8(0x47); put_head(&mut s);
++                            put_nlist(&mut s, all);
++                            s.nat_u64(*nparams as u64);
++                            s.nat_u64(*nindices as u64);
++                            s.nat_u64(*nmotives as u64);
++                            s.nat_u64(*nminors as u64);
++                            s.u32_le(rules.len() as u32);
++                            for &(ctor, nf, rhs) in rules.iter() {
++                                let mut rs = Sha256::new();
++                                rs.u8(0x48);
++                                rs.update(&name_h_ref[env.canon(ctor) as usize]);
++                                rs.nat_u64(nf as u64);
++                                rs.update(&main_h_ref[rhs as usize]);
++                                s.update(&rs.finalize());
++                            }
++                            s.u8(*k as u8);
++                            s.u8(*unsafe_ as u8);
++                        }
++                    }
++                    let chash = s.finalize();
++                    let mut pair = [0u8; 64];
++                    pair[..32].copy_from_slice(&nh);
++                    pair[32..].copy_from_slice(&chash);
++                    out.push(pair);
++                }
++                Ok(out)
++            }));
++        }
++        let mut all = Vec::with_capacity(hs.len());
++        for h in hs {
++            all.push(h.join().map_err(|_| "digest worker panicked".to_string())??);
++        }
++        Ok(all)
++    });
++    let parts = parts?;
++    let mut pairs: Vec<[u8; 64]> = Vec::with_capacity(n_consts);
++    for p in parts {
++        pairs.extend(p);
++    }
++    pairs.sort_unstable();
++
++    let mut root = Sha256::new();
++    root.update(b"FV-ENV-SHA256-V1\0");
++    root.u64_le(pairs.len() as u64);
++    for p in &pairs {
++        root.update(p);
++    }
++    let hex = to_hex(&root.finalize());
++    let ms = t0.elapsed().as_millis();
++
++    let tmp = format!("{out_path}.tmp");
++    let content = format!("env_sha256_v1={hex}\nconst_count={}\ndigest_ms={ms}\n", pairs.len());
++    std::fs::write(&tmp, content).map_err(|e| format!("write {tmp}: {e}"))?;
++    std::fs::rename(&tmp, out_path).map_err(|e| format!("rename {tmp} -> {out_path}: {e}"))?;
++    Ok((hex, pairs.len(), ms))
++}
+diff -ruN r7a/src/main.rs r7b/src/main.rs
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -25,6 +25,7 @@
+ //! at most 64 MiB) declines the declaration.
+ 
+ mod env;
++mod env_digest;
+ mod induct;
+ mod level;
+ mod quot;
+@@ -1178,5 +1179,14 @@
+         let many = if n == 1 { String::new() } else { format!("{n} declarations; ") };
+         finish(0, &format!("checked: {} ({many}subset; {unchecked} earlier declarations admitted unchecked)", names.join(",")));
+     }
++    // PLAN R7: write canonical env SHA-256 digest before accepting when requested
++    if let Ok(digest_path) = std::env::var("GRUSZKA_DIGEST_OUT") {
++        if !digest_path.is_empty() {
++            match env_digest::compute_and_write(env, workers, &digest_path) {
++                Ok((hex, cnt, ms)) => eprintln!("[gruszka] env_sha256_v1={hex} ({cnt} consts, {ms} ms)"),
++                Err(e) => finish(2, &format!("declined: env digest failed: {e}")),
++            }
++        }
++    }
+     finish(0, "accepted");
+ }

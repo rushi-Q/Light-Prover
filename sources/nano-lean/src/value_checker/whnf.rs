@@ -1,0 +1,475 @@
+use super::derive::HOT;
+use super::tables::Hot;
+use super::value::{Head, K, V, Val};
+use super::{R, Vc, bytes, stat};
+use crate::checker::env::Decls;
+use crate::checker::nat::{self, NatValue};
+use crate::reject;
+use crate::resource::Budget;
+use crate::term::decl::{Declar, Hint, Recursor};
+use crate::term::name::Name;
+use crate::term::names::{QUOT_FN, QUOT_MK_ARITY};
+use crate::term::ptr::{LevelsPtr, NamePtr};
+use num_bigint::BigUint;
+use num_traits::Zero;
+use smallvec::SmallVec;
+
+/// Kept folded while deriving so a rule leaves arithmetic to the literal extension.
+/// A Nat primitive or one of its auxiliaries, reached only when the literal extension declined,
+/// where a rule would redo literal arithmetic structurally.
+fn nat_backed(n: NamePtr<'_>) -> bool {
+    n.nat_red().is_some()
+        || matches!(n.kind, Name::Str(p, ..) | Name::Num(p, ..) if p.nat_red().is_some())
+}
+
+fn opaque_nat(v: V<'_>) -> bool {
+    matches!(v.k, K::Neu(Head::Const(n, _), _) if v.open && n.nat_red().is_some())
+}
+
+impl<'t, 'a: 't> Vc<'t, 'a> {
+    pub(crate) fn whnf_core(&mut self, v: V<'t>) -> R<V<'t>> {
+        let K::Neu(h, args) = v.k else { return Ok(v) };
+        if matches!(h, Head::Local(_, _, None)) {
+            return Ok(v);
+        }
+        if !self.bypassed()
+            && let Some(r) = self.memo(v).and_then(|m| m.whnf_core.get())
+        {
+            #[cfg(feature = "memocheck")]
+            self.audit_value("whnf_core", r, |c| {
+                c.audit_bypass();
+                c.whnf_core(v)
+            });
+            return Ok(r);
+        }
+        #[cfg(feature = "memocheck")]
+        self.audit_entered();
+        self.tick()?;
+        self.guard()?;
+        let r = match h {
+            Head::Const(n, ls) => match self.reduce_rec(n, ls, args)? {
+                Some(r) => self.whnf_core(r)?,
+                None => v,
+            },
+            Head::Proj(_, idx, s) => match self.reduce_proj(idx, s)? {
+                Some(f) => {
+                    let f = self.apply(f, args)?;
+                    self.whnf_core(f)?
+                }
+                None => v,
+            },
+            Head::Local(_, _, Some(x)) => {
+                let f = self.apply(x, args)?;
+                self.whnf_core(f)?
+            }
+            Head::Local(_, _, None) => unreachable!(),
+        };
+        self.memo_of(v).whnf_core.set(Some(r));
+        Ok(r)
+    }
+
+    pub(crate) fn whnf(&mut self, v: V<'t>) -> R<V<'t>> {
+        match v.k {
+            K::Neu(Head::Local(_, _, None), _)
+            | K::Sort(_)
+            | K::Pi(..)
+            | K::Lam(..)
+            | K::Nat(_)
+            | K::Str(_) => return Ok(v),
+            _ => {}
+        }
+        if !self.bypassed()
+            && let Some(r) = self.memo(v).and_then(|m| m.whnf.get())
+        {
+            #[cfg(feature = "memocheck")]
+            self.audit_value("whnf", r, |c| {
+                c.audit_bypass();
+                c.whnf(v)
+            });
+            return Ok(r);
+        }
+        stat!(self, whnfs);
+        let mut t = v;
+        let mut path = SmallVec::<[V<'t>; 8]>::new();
+        let r = loop {
+            self.tick()?;
+            if !self.bypassed()
+                && let Some(r) = self.memo(t).and_then(|m| m.whnf.get())
+            {
+                break r;
+            }
+            #[cfg(feature = "memocheck")]
+            self.audit_entered();
+            path.push(t);
+            let t1 = self.whnf_core(t)?;
+            if let Some(n) = self.reduce_nat(t1)? {
+                break n;
+            }
+            if self.deriving && opaque_nat(t1) {
+                return Ok(t1);
+            }
+            match self.unfold(t1, true)? {
+                Some(n) => t = n,
+                None => break t1,
+            }
+        };
+        for p in path {
+            self.memo_of(p).whnf.set(Some(r));
+        }
+        Ok(r)
+    }
+
+    pub(crate) fn delta_hint(&self, v: V<'t>) -> Option<Hint> {
+        let K::Neu(Head::Const(n, ls), _) = v.k else {
+            return None;
+        };
+        let d = self.declar(n)?;
+        let (_, h) = d.unfoldable()?;
+        (ls.len() == d.uparams().len()).then_some(h)
+    }
+
+    /// With `rules`, a derived rule may jump several steps at once. Lazy delta passes false so it
+    /// still sees the same-head states it compares by arguments, and fired results stay out of
+    /// the cache for the same reason.
+    pub(crate) fn unfold(&mut self, v: V<'t>, rules: bool) -> R<Option<V<'t>>> {
+        if !self.bypassed()
+            && let Some(r) = self.memo(v).and_then(|m| m.unfold.get())
+        {
+            #[cfg(feature = "memocheck")]
+            self.audit("unfolding", |c| {
+                c.audit_bypass();
+                Ok(match (r, c.unfold(v, rules)?) {
+                    (None, None) => true,
+                    (Some(a), Some(b)) => std::ptr::eq(a, b) || c.def_eq(a, b)?,
+                    _ => false,
+                })
+            });
+            return Ok(r);
+        }
+        #[cfg(feature = "memocheck")]
+        self.audit_entered();
+        let (r, fired) = self.unfold_uncached(v, rules)?;
+        if !fired {
+            self.memo_of(v).unfold.set(Some(r));
+        }
+        Ok(r)
+    }
+
+    fn unfold_uncached(&mut self, v: V<'t>, rules: bool) -> R<(Option<V<'t>>, bool)> {
+        let K::Neu(Head::Const(n, ls), args) = v.k else {
+            return Ok((None, false));
+        };
+        let Some(d) = self.declar(n) else {
+            return Ok((None, false));
+        };
+        let Some((body, _)) = d.unfoldable() else {
+            return Ok((None, false));
+        };
+        #[cfg(feature = "vstats")]
+        {
+            *self.unfolded.entry(n).or_default() += 1;
+        }
+        if ls.len() != d.uparams().len() {
+            return Ok((None, false));
+        }
+        stat!(self, unfolds);
+        let (f, hot) = match self.t.delta.get_mut(&(n, ls)) {
+            Some(e) => {
+                if let Hot::Count(c) = &mut e.1 {
+                    *c += u32::from(!self.deriving);
+                }
+                *e
+            }
+            None => {
+                let f = self.eval_at(d.uparams(), ls, body)?;
+                self.t.delta.insert((n, ls), (f, Hot::Count(1)));
+                (f, Hot::Count(1))
+            }
+        };
+        let rule = match hot {
+            Hot::Rule(i) if rules => Some(i),
+            Hot::Count(c) if rules && c >= HOT && !self.deriving && !nat_backed(n) => {
+                let h = self.derive(f, body)?;
+                if let Some(e) = self.t.delta.get_mut(&(n, ls)) {
+                    e.1 = h;
+                }
+                match h {
+                    Hot::Rule(i) => Some(i),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        if let Some(i) = rule
+            && let Some(r) = self.fire(i, args)?
+        {
+            #[cfg(feature = "derivecheck")]
+            {
+                let u = self.apply(f, args)?;
+                assert!(
+                    self.deriving || self.def_eq(r, u)?,
+                    "derived rule for {n} disagrees"
+                );
+            }
+            return Ok((Some(r), true));
+        }
+        Ok((Some(self.apply(f, args)?), false))
+    }
+
+    fn reduce_proj(&mut self, idx: u16, s: V<'t>) -> R<Option<V<'t>>> {
+        let mut c = self.whnf(s)?;
+        if let K::Str(x) = c.k {
+            let e = self.str_to_ctor(x)?;
+            c = self.whnf(e)?;
+        }
+        let K::Neu(Head::Const(n, _), args) = c.k else {
+            return Ok(None);
+        };
+        let Some(Declar::Ctor(k)) = self.declar(n) else {
+            return Ok(None);
+        };
+        Ok(args
+            .get(usize::from(k.num_params) + usize::from(idx))
+            .copied())
+    }
+
+    fn reduce_rec(
+        &mut self,
+        n: NamePtr<'t>,
+        ls: LevelsPtr<'t>,
+        args: &'t [V<'t>],
+    ) -> R<Option<V<'t>>> {
+        if let Some(mk_pos) = self.quot_major(n) {
+            return self.reduce_quot(args, mk_pos);
+        }
+        match self.declar(n) {
+            Some(Declar::Rec(r)) => self.reduce_ind_rec(r, ls, args),
+            _ => Ok(None),
+        }
+    }
+
+    fn reduce_quot(&mut self, args: &'t [V<'t>], mk_pos: usize) -> R<Option<V<'t>>> {
+        let Some(&m) = args.get(mk_pos) else {
+            return Ok(None);
+        };
+        let mk = self.whnf(m)?;
+        let K::Neu(Head::Const(c, _), margs) = mk.k else {
+            return Ok(None);
+        };
+        if margs.len() != QUOT_MK_ARITY || Some(c) != self.names.quot_mk {
+            return Ok(None);
+        }
+        let r = self.apply(args[QUOT_FN], &margs[QUOT_MK_ARITY - 1..])?;
+        Ok(Some(self.apply(r, &args[mk_pos + 1..])?))
+    }
+
+    fn reduce_ind_rec(
+        &mut self,
+        rec: Recursor<'t>,
+        ls: LevelsPtr<'t>,
+        args: &'t [V<'t>],
+    ) -> R<Option<V<'t>>> {
+        let mi = rec.major_idx();
+        let Some(&m) = args.get(mi) else {
+            return Ok(None);
+        };
+        let mut major = m;
+        if rec.is_k {
+            major = self.expose_ctor_when_k(&rec, major)?;
+        }
+        major = self.whnf(major)?;
+        match major.k {
+            K::Nat(x) => major = self.nat_to_ctor(x)?,
+            K::Str(x) => {
+                let e = self.str_to_ctor(x)?;
+                major = self.whnf(e)?;
+            }
+            _ => {
+                if let Some(ind) = self.rec_induct(&rec) {
+                    major = self.expose_ctor_when_structure(ind, major)?;
+                }
+            }
+        }
+        let K::Neu(Head::Const(cname, _), margs) = major.k else {
+            return Ok(None);
+        };
+        let Some(ri) = rec.rules.iter().position(|r| r.ctor == cname) else {
+            return Ok(None);
+        };
+        let rule = rec.rules[ri];
+        let nf = usize::from(rule.nfields);
+        if margs.len() < nf || ls.len() != rec.info.uparams.len() {
+            return Ok(None);
+        }
+        let rhs = match self.t.rules.get(&(rec.info.name, ri, ls)) {
+            Some(&v) => v,
+            None => {
+                let v = self.eval_at(rec.info.uparams, ls, rule.rhs)?;
+                self.t.rules.insert((rec.info.name, ri, ls), v);
+                v
+            }
+        };
+        let np = usize::from(rec.num_params)
+            + usize::from(rec.num_motives)
+            + usize::from(rec.num_minors);
+        let mut all = SmallVec::<[V<'t>; 16]>::from_slice(&args[..np]);
+        all.extend_from_slice(&margs[margs.len() - nf..]);
+        all.extend_from_slice(&args[mi + 1..]);
+        Ok(Some(self.apply(rhs, &all)?))
+    }
+
+    fn expose_ctor_when_k(&mut self, rec: &Recursor<'t>, e: V<'t>) -> R<V<'t>> {
+        let Some(ind) = self.rec_induct(rec) else {
+            return Ok(e);
+        };
+        if self.deriving && e.open {
+            return Ok(e);
+        }
+        let t = self.type_of(e)?;
+        let t = self.whnf(t)?;
+        let K::Neu(Head::Const(n, ls), targs) = t.k else {
+            return Ok(e);
+        };
+        let np = usize::from(rec.num_params);
+        if n != ind || targs.len() < np {
+            return Ok(e);
+        }
+        let c = self.mk(K::Neu(Head::Const(rec.rules[0].ctor, ls), &[]), false);
+        let nc = self.apply(c, &targs[..np])?;
+        let nt = self.type_of(nc)?;
+        Ok(if self.def_eq(t, nt)? { nc } else { e })
+    }
+
+    pub(crate) fn expose_ctor_when_structure(&mut self, ind: NamePtr<'t>, e: V<'t>) -> R<V<'t>> {
+        let Some((i, c)) = self.structure_like(ind) else {
+            return Ok(e);
+        };
+        if let K::Neu(Head::Const(n, _), _) = e.k
+            && matches!(self.declar(n), Some(Declar::Ctor(_)))
+        {
+            return Ok(e);
+        }
+        if self.deriving && e.open {
+            return Ok(e);
+        }
+        let t = self.type_of(e)?;
+        let t = self.whnf(t)?;
+        let K::Neu(Head::Const(n, ls), targs) = t.k else {
+            return Ok(e);
+        };
+        if n != ind || self.is_prop(t)? {
+            return Ok(e);
+        }
+        let mut all = SmallVec::<[V<'t>; 16]>::from_slice(
+            &targs[..usize::from(i.num_params).min(targs.len())],
+        );
+        for f in 0..c.num_fields {
+            all.push(self.mk(K::Neu(Head::Proj(ind, f, e), &[]), e.open));
+        }
+        let k = self.mk(K::Neu(Head::Const(c.info.name, ls), &[]), false);
+        self.apply(k, &all)
+    }
+
+    pub(crate) fn nat_to_ctor(&mut self, n: &'t BigUint) -> R<V<'t>> {
+        if n.is_zero() {
+            return self.konst0(self.names.nat_zero);
+        }
+        let s = self.konst0(self.names.nat_succ)?;
+        let p = self.nat(n - 1u32);
+        self.apply(s, &[p])
+    }
+
+    pub(crate) fn nat(&mut self, n: BigUint) -> V<'t> {
+        stat!(self, nat_req);
+        let h = nat::hash(&n);
+        if let Some(&(_, v)) = self
+            .t
+            .nats
+            .find(h, |&(g, v)| g == h && matches!(v.k, K::Nat(p) if *p == n))
+        {
+            return v;
+        }
+        bytes!(
+            self,
+            b_nat,
+            size_of::<Val>() + size_of::<BigUint>() + n.bits().div_ceil(64) as usize * 8
+        );
+        let p = self.ctx.arena.alloc_nat(n);
+        let v = &*self.ctx.arena.alloc(Val::new(K::Nat(p), false));
+        self.t.nats.insert_unique(h, (h, v), |e| e.0);
+        v
+    }
+
+    pub(crate) fn str_to_ctor(&mut self, s: &'t str) -> R<V<'t>> {
+        let z = self.ctx.zero();
+        let l0 = self.ctx.levels(&[z]);
+        let ch = self.konst0(self.names.char)?;
+        let of_nat = self.konst0(self.names.char_of_nat)?;
+        let (Some(nil), Some(cons)) = (self.names.list_nil, self.names.list_cons) else {
+            reject!(self, "missing builtin constant")
+        };
+        let nil = self.mk(K::Neu(Head::Const(nil, l0), &[]), false);
+        let cons = self.mk(K::Neu(Head::Const(cons, l0), &[]), false);
+        let mut out = self.apply(nil, &[ch])?;
+        for c in s.chars().rev() {
+            let n = self.nat(BigUint::from(c as u32));
+            let x = self.apply(of_nat, &[n])?;
+            out = self.apply(cons, &[ch, x, out])?;
+        }
+        let f = self.konst0(self.names.string_of_list)?;
+        self.apply(f, &[out])
+    }
+
+    fn nat_val(&mut self, v: V<'t>) -> R<Option<&'t BigUint>> {
+        let w = self.whnf(v)?;
+        Ok(match w.k {
+            K::Nat(n) => Some(n),
+            K::Neu(Head::Const(n, _), []) if Some(n) == self.names.nat_zero => Some(&nat::ZERO),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn reduce_nat(&mut self, v: V<'t>) -> R<Option<V<'t>>> {
+        if v.open {
+            return Ok(None);
+        }
+        let K::Neu(Head::Const(n, _), args) = v.k else {
+            return Ok(None);
+        };
+        if args.is_empty() || args.len() > 2 {
+            return Ok(None);
+        }
+        let Some(op) = n.nat_red() else {
+            return Ok(None);
+        };
+        if args.len() == 1 {
+            if !nat::is_unary(op) {
+                return Ok(None);
+            }
+            let Some(x) = self.nat_val(args[0])? else {
+                return Ok(None);
+            };
+            let Some(r) = nat::unary(op, x).map_err(|_| self.decline(Budget::Work))? else {
+                return Ok(None);
+            };
+            return Ok(Some(self.nat(r)));
+        }
+        if nat::is_unary(op) {
+            return Ok(None);
+        }
+        let Some(x) = self.nat_val(args[0])? else {
+            return Ok(None);
+        };
+        let Some(y) = self.nat_val(args[1])? else {
+            return Ok(None);
+        };
+        let Some(r) = nat::binary(op, x, y).map_err(|_| self.decline(Budget::Work))? else {
+            return Ok(None);
+        };
+        Ok(Some(match r {
+            NatValue::Nat(r) => self.nat(r),
+            NatValue::Bool(true) => self.konst0(self.names.bool_true)?,
+            NatValue::Bool(false) => self.konst0(self.names.bool_false)?,
+        }))
+    }
+}

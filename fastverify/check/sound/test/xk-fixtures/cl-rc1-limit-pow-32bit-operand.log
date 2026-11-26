@@ -1,0 +1,5 @@
+con-leche: stats: phases: parse 0.0s (index 0.0s), check 0.0s
+con-leche: stats: check pool: 0.001s wall, 4 workers, 42 records, busy 0.003s (78.0%); tail 0.000s after the last start, 4 busy then, 0.000s worker-time in it (56.9%)
+con-leche: stats: slowest checks: 0.000s inductive HPow (#12); 0.000s inductive Eq (#0); 0.000s inductive Nat (#1); 0.000s def Nat.mul (#37); 0.000s inductive Pow (#14)
+con-leche: stats: peak RSS 0.02 GiB
+con-leche: invalid: the kernel refused to evaluate `Nat.pow` because its second argument does not fit in a 32-bit unsigned integer [at theorem badPowCount, fold position 41] (--verified) t=0.0s

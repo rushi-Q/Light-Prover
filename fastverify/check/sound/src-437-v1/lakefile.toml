@@ -1,0 +1,25 @@
+name = "pchk"
+defaultTargets = ["pleanchecker", "ccmp"]
+
+[[lean_exe]]
+name = "pleanchecker"
+root = "Main"
+
+[[lean_lib]]
+name = "PChk"
+
+# the concurrent comparator (ccmp @ 98f6ef1, verbatim; uses FastParse + ParAxioms)
+[[lean_lib]]
+name = "CCmp"
+
+[[lean_exe]]
+name = "ccmp"
+root = "CCmpMain"
+
+# the fast export reader (FastParse.lean v4, sha256 1752880b...beff, verbatim)
+[[lean_lib]]
+name = "FastParse"
+
+# the parallel axiom check (via ccmp @ caf71b7, verbatim)
+[[lean_lib]]
+name = "ParAxioms"

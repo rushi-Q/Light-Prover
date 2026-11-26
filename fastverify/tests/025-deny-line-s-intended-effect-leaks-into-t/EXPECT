@@ -1,0 +1,4 @@
+# case official_rc official_export_sha256[:16]  (from a live official run; matches the values recorded with the original repro)
+proj-export 0 3f844f8170d8e089
+proj-falsereject 0 f02be0bbeb69467c
+proj-accept 1 -

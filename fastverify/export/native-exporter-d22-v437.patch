@@ -1,0 +1,333 @@
+diff --git a/lakefile.lean b/lakefile.lean
+index 3472ede..ff9f24a 100644
+--- a/lakefile.lean
++++ b/lakefile.lean
+@@ -37,7 +37,16 @@ target fast_export.o pkg : FilePath := do
+   -- F04: the githash of the Lean running this lakefile (= the toolchain that builds and links the exporter) is compiled
+   -- in; the native core rejects (declines) .olean files with any other githash, as the official reader does.
+   let ghArg := "-DF04_EXPECTED_GITHASH=\"" ++ Lean.githash ++ "\""
+-  buildO oFile srcJob weakArgs #["-O2", "-std=c++17", "-fPIC", "-pthread", "-fno-exceptions", "-fno-rtti", ghArg] "c++" extraTrace
++  -- D22 (fastverify, Lean 4.37 port): from Lean 4.37 on, .olean files are format version 4 (data_size word before the
++  -- compacted data) and ModuleData carries the per-module constant prefix trees (constTrie?/extraConstTrie?, PR #14362)
++  -- that finalizeImport reads instead of the constNames/constants arrays.  The older layouts stay the default, so the
++  -- object code of builds for older releases is unchanged.
++  -- (-ffile-prefix-map: lean.h's path is compiled into the object; mapping it makes the binary independent of where the
++  -- toolchain is installed, so a rebuild on another machine / elan home gives the same bytes)
++  let incDir := (← getLeanIncludeDir).toString
++  let v4Args := if Lean.version.major > 4 || (Lean.version.major == 4 && Lean.version.minor >= 37) then
++    #["-DFV_OLEAN_V4=1", "-ffile-prefix-map=" ++ incDir ++ "=/lean-toolchain/include"] else #[]
++  buildO oFile srcJob weakArgs (#["-O2", "-std=c++17", "-fPIC", "-pthread", "-fno-exceptions", "-fno-rtti", ghArg] ++ v4Args) "c++" extraTrace
+ 
+ @[default_target]
+ lean_exe lean4export where
+diff --git a/lean-toolchain b/lean-toolchain
+index 025e595..0e037f5 100644
+--- a/lean-toolchain
++++ b/lean-toolchain
+@@ -1 +1 @@
+-leanprover/lean4:v4.33.0
++leanprover/lean4:v4.37.0-rc1
+diff --git a/native/fast_export.cpp b/native/fast_export.cpp
+index 5517a3d..8a40f6a 100644
+--- a/native/fast_export.cpp
++++ b/native/fast_export.cpp
+@@ -53,6 +53,20 @@ static const uint32_t NONE = 0xffffffffu;
+ #error "F04_EXPECTED_GITHASH must be defined (lakefile.lean passes Lean.githash)"
+ #endif
+ static_assert(sizeof(F04_EXPECTED_GITHASH) == 41, "F04_EXPECTED_GITHASH must be a 40-character githash");
++// D22 (Lean 4.37 port; lakefile passes -DFV_OLEAN_V4=1 for Lean >= 4.37): src/library/module.cpp OLEAN_VERSION = 4 writes
++// the 0x58-byte header, then `size_t data_size`, then the compacted data (whose first word is the root slot), then
++// `uint32 num_closure_offsets` + closure offsets + a library table.  ModuleData gained two object fields (constTrie?,
++// extraConstTrie? : the per-module constant prefix trees of PR #14362), which finalizeImport uses INSTEAD of the
++// constNames/constants arrays; see read_part, validate_md and the constant-map phase of run().
++#ifdef FV_OLEAN_V4
++static const uint8_t OLEAN_VERSION_EXPECTED = 4;
++static const size_t OLEAN_ROOT_OFF = 0x60;  // header (0x58 bytes) + data_size word
++static const size_t MD_NOBJS = 7;           // imports constNames constants extraConstNames entries constTrie? extraConstTrie?
++#else
++static const uint8_t OLEAN_VERSION_EXPECTED = 2;
++static const size_t OLEAN_ROOT_OFF = 0x58;
++static const size_t MD_NOBJS = 5;
++#endif
+ 
+ [[noreturn]] static void die(const std::string& msg) {
+     fprintf(stderr, "lean4export (native): %s\n", msg.c_str());
+@@ -578,6 +592,7 @@ struct Part {
+     uint64_t base;
+     P ptr;
+     uint64_t len;
++    uint64_t flen = 0;  // file length (len = the addressable data section; equal before olean v4)
+     // pointer cache: id + 1 of the object at ptr + 16 * i (0 = not yet).  Only Name/Level/Expr/List objects are
+     // cached and each of them takes >= 16 bytes, so two cached objects never share a cell.
+     std::atomic<uint32_t>* side = nullptr;
+@@ -938,6 +953,20 @@ struct In {
+         } else {
+             die("bad name tag " + std::to_string(t));
+         }
++#ifdef FV_OLEAN_V4
++        {
++            // D22: the official import looks names up through the per-module prefix trees by binary search on the
++            // CACHED Name.hash of the stored keys, compared with hashes computed for the looked-up names: a stored hash
++            // that is not Lean's Name.hash (Init/Prelude.lean: anonymous 1723, str p s = mixHash p.hash s.hash,
++            // num p v = mixHash p.hash v for v < 2^64) makes lookups differ from the structural ones done here.
++            // Every Name object is checked once, when it is first interned (its prefix was checked before).
++            uint64_t r0 = rawf(p, 0);
++            uint64_t ph = is_scalar(r0) ? 1723 : sc_u64(tr(m, r0), 0);
++            uint64_t want = t == 1 ? lean_uint64_mix_hash(ph, lean_string_hash((b_lean_obj_arg)f(m, p, 1)))
++                                   : lean_uint64_mix_hash(ph, key.num);
++            if (want != hash) die("stored Name hash differs from Name.hash in module " + mods[m].name + " (declining)");
++        }
++#endif
+         bool ins;
+         static thread_local uint32_t nspare = NONE;
+         id = nmap.get_or_insert(
+@@ -4071,7 +4100,18 @@ static char* arena_alloc(size_t len) {
+     if (o + a > CAP) return nullptr;
+     return b + o;
+ }
+-static Part read_part(const std::string& path) {
++// temp = true (D22, after D15's lowmem exporter): a part that is only header-checked/validated and then released again
++// (the IR parts): a plain mapping (or malloc) that free_temp_part() releases, so they neither stay mapped until exit
++// (vm.max_map_count: ~300k-440k IR files at RH scale) nor take arena memory.  `temp_mmap` says which one it was.
++static Part read_part_impl(const std::string& path, bool temp, bool* temp_mmap);
++static Part read_part(const std::string& path) { return read_part_impl(path, false, nullptr); }
++static void free_temp_part(Part& pt, bool was_mmap, size_t file_len) {
++    if (!pt.ptr) return;
++    if (was_mmap) munmap((void*)pt.ptr, file_len);
++    else free((void*)pt.ptr);
++    pt.ptr = nullptr;
++}
++static Part read_part_impl(const std::string& path, bool temp, bool* temp_mmap) {
+     int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+     if (fd < 0) die("object file '" + path + "' does not exist or cannot be opened");
+     struct stat st;
+@@ -4079,8 +4119,22 @@ static Part read_part(const std::string& path) {
+     size_t len = (size_t)st.st_size;
+     if (len < 0x60) die(path + ": not an olean");
+     static const bool test_read = getenv("LEAN4EXPORT_TEST_READ") != nullptr;  // testing aid for the fallback below
+-    void* m = test_read ? MAP_FAILED : reg_mmap(len, PROT_READ, MAP_PRIVATE | (g_populate ? MAP_POPULATE : 0), fd);
+-    if (m == MAP_FAILED) {
++    void* m = test_read ? MAP_FAILED
++              : temp    ? mmap(nullptr, len, PROT_READ, MAP_PRIVATE, fd, 0)
++                        : reg_mmap(len, PROT_READ, MAP_PRIVATE | (g_populate ? MAP_POPULATE : 0), fd);
++    if (temp) *temp_mmap = m != MAP_FAILED;
++    if (m == MAP_FAILED && temp) {
++        char* b = (char*)malloc(len);
++        if (!b) die("mmap " + path + " failed and out of memory");
++        size_t off = 0;
++        while (off < len) {
++            ssize_t r = pread(fd, b + off, len - off, (off_t)off);
++            if (r < 0 && errno == EINTR) continue;
++            if (r <= 0) die("mmap and read of " + path + " failed");
++            off += (size_t)r;
++        }
++        m = b;
++    } else if (m == MAP_FAILED) {
+         // e.g. ENOMEM when vm.max_map_count is reached (full-RH scale: ~450k parts): read the file instead, as Lean does
+         char* b = arena_alloc(len);
+         if (!b) die("mmap " + path + " failed and out of memory");
+@@ -4096,7 +4150,7 @@ static Part read_part(const std::string& path) {
+     close(fd);
+     P p = (P)m;
+     if (memcmp(p, "olean", 5) != 0) die(path + ": not an olean");
+-    if (p[5] != 2) die(path + ": unsupported olean version " + std::to_string(p[5]));
++    if (p[5] != OLEAN_VERSION_EXPECTED) die(path + ": unsupported olean version " + std::to_string(p[5]));
+     // F04 (fail closed): the official reader (src/library/module.cpp, release builds with LEAN_CHECK_OLEAN_VERSION and
+     // GMP) also rejects an .olean whose flags byte differs from 1 or whose githash differs from the githash of the Lean
+     // the exporter was built with ("incompatible header"); the native core used to accept any githash (oleans of another
+@@ -4106,7 +4160,22 @@ static Part read_part(const std::string& path) {
+         die(path + ": olean githash differs from the exporter's Lean githash (declining)");
+     uint64_t base;
+     memcpy(&base, p + 0x50, 8);
+-    return Part{base, p, (uint64_t)len};
++#ifdef FV_OLEAN_V4
++    // v4 (module.cpp lean_compacted_region_read): data_size at 0x58, the data section [0x60, 0x60 + data_size), then the
++    // closure section.  Module data never contains closures (the official reader would relocate their code pointers):
++    // a nonzero closure count, or sections that do not fit the file, decline.  Only the data section is addressable.
++    uint64_t dsz;
++    memcpy(&dsz, p + 0x58, 8);
++    if (dsz < 8 || dsz > len || len - dsz < 0x60 + 4) die(path + ": olean data_size out of range (declining)");
++    uint32_t ncl;
++    memcpy(&ncl, p + 0x60 + dsz, 4);
++    if (ncl != 0) die(path + ": olean with compacted closures (declining)");
++    Part pt{base, p, (uint64_t)(0x60 + dsz)};
++#else
++    Part pt{base, p, (uint64_t)len};
++#endif
++    pt.flen = (uint64_t)len;
++    return pt;
+ }
+ 
+ static bool is_dir(const std::string& p) {
+@@ -4238,11 +4307,59 @@ static void validate_name(const std::vector<Part>& parts, uint64_t r, const std:
+     }
+     if (r != 1) die("malformed Name (scalar " + std::to_string(r) + ") in " + what + " (declining)");
+ }
++#ifdef FV_OLEAN_V4
++// D22: structural validation of a ConstTrie (Lean.ConstTrie: leaf key val = tag 0 / inner key children = tag 1 / node
++// key val children = tag 2; children : Array ConstTrie).  finalizeImport merges these trees lazily and walks them on
++// lookups (binary search by the cached key hash), so a tree that is not a well-formed ConstTrie can make the official
++// exporter misbehave in access-dependent ways: decline instead.  Values: ConstantInfo objects (constTrie?) or Unit =
++// box(0) (extraConstTrie?).  The semantic checks of the constant trie (keys extend their parent's key by one
++// component, children sorted by key hash, no duplicate keys) are done in run() with interned names.
++static void validate_trie(const std::vector<Part>& parts, uint64_t r, const std::string& what, bool obj_vals) {
++    size_t total = 0;
++    for (const Part& p : parts) total += p.len;
++    size_t limit = total / 24 + 1;  // every node object takes >= 24 bytes: more visits mean a cycle
++    std::vector<uint64_t> st;
++    st.push_back(r);
++    size_t visits = 0;
++    while (!st.empty()) {
++        uint64_t q = st.back();
++        st.pop_back();
++        if (++visits > limit) die("ConstTrie with a cycle in " + what + " (declining)");
++        if (is_scalar(q)) die("malformed ConstTrie node in " + what + " (declining)");
++        P n = tr_parts(parts, q, 8 + 16, what);
++        uint8_t t = tag(n);
++        size_t k = nobjs(n);
++        if (t > 2 || k != (t == 2 ? 3u : 2u)) die("malformed ConstTrie node in " + what + " (declining)");
++        tr_parts(parts, q, 8 + 8 * k, what);
++        validate_name(parts, rawf(n, 0), what);
++        if (t != 1 && obj_vals && is_scalar(rawf(n, 1))) die("malformed ConstTrie value in " + what + " (declining)");
++        if (t != 0) {
++            uint64_t ch = rawf(n, t == 1 ? 1 : 2);
++            if (is_scalar(ch)) die("malformed ConstTrie children in " + what + " (declining)");
++            P a = tr_parts(parts, ch, 24, what);
++            if (tag(a) != T_ARRAY) die("malformed ConstTrie children in " + what + " (declining)");
++            size_t m = arr_size(a);
++            if (m > ((uint64_t)1 << 40)) die("malformed ConstTrie children in " + what + " (declining)");
++            tr_parts(parts, ch, 24 + 8 * m, what);
++            for (size_t i = 0; i < m; i++) st.push_back(arr_raw(a, i));
++        }
++    }
++}
++#endif
+ static void validate_md(const std::vector<Part>& parts, uint64_t root, const std::string& what) {
+-    P d = tr_parts(parts, root, 8 + 5 * 8 + 1, what);
+-    if (tag(d) != 0 || nobjs(d) != 5) die("malformed ModuleData in " + what + " (declining)");
+-    for (size_t k = 0; k < 5; k++)
++    P d = tr_parts(parts, root, 8 + MD_NOBJS * 8 + 1, what);
++    if (tag(d) != 0 || nobjs(d) != MD_NOBJS) die("malformed ModuleData in " + what + " (declining)");
++    for (size_t k = 0; k < MD_NOBJS; k++)
+         if (is_scalar(rawf(d, k))) die("malformed ModuleData field in " + what + " (declining)");
++#ifdef FV_OLEAN_V4
++    // constTrie? / extraConstTrie? must be `some t` (finalizeImport: `data.constTrie?.get!`, a panic -> the official
++    // exporter aborts under LEAN_ABORT_ON_PANIC=1) holding a well-formed tree
++    for (size_t k = 5; k < 7; k++) {
++        P o = tr_parts(parts, rawf(d, k), 8 + 8, what);
++        if (tag(o) != 1 || nobjs(o) != 1) die("ModuleData prefix tree is not `some` in " + what + " (declining)");
++        validate_trie(parts, rawf(o, 0), what, k == 5);
++    }
++#endif
+     auto array = [&](uint64_t r) {
+         P a = tr_parts(parts, r, 24, what);
+         if (tag(a) != T_ARRAY) die("malformed array in " + what + " (declining)");
+@@ -4273,7 +4390,7 @@ static void load_module(std::vector<Module>& mods, const std::vector<std::string
+     mods[mi].name = pretty_comps(comps);
+     mods[mi].parts.push_back(main);
+     uint64_t root;
+-    memcpy(&root, main.ptr + 0x58, 8);
++    memcpy(&root, main.ptr + OLEAN_ROOT_OFF, 8);
+     P d0 = tr_mods(mods, mi, root);
+     bool is_module = sc_u8(d0, 0) != 0;  // ModuleData.isModule (only scalar field)
+     P data = d0;
+@@ -4281,11 +4398,15 @@ static void load_module(std::vector<Module>& mods, const std::vector<std::string
+         Part s = read_part(path + ".server");
+         Part p = read_part(path + ".private");
+         uint64_t proot;
+-        memcpy(&proot, p.ptr + 0x58, 8);
++        memcpy(&proot, p.ptr + OLEAN_ROOT_OFF, 8);
+         mods[mi].parts.push_back(s);
+         mods[mi].parts.push_back(p);
+         data = tr_mods(mods, mi, proot);
+         validate_md(mods[mi].parts, proot, path + ".private");
++#ifdef FV_OLEAN_V4
++        // getData? decides module-ness by the public part's flag, irData? by the private part's: they must agree
++        if (sc_u8(data, 0) == 0) die(path + ".private: isModule differs from the .olean part (declining)");
++#endif
+     } else {
+         validate_md(mods[mi].parts, root, path);
+     }
+@@ -4294,11 +4415,14 @@ static void load_module(std::vector<Module>& mods, const std::vector<std::string
+     std::string base = path.substr(0, path.size() - 6);  // strip ".olean"
+     if (exists(base + ".ir.sig")) {
+         std::vector<Part> ir;
+-        ir.push_back(read_part(base + ".ir.sig"));  // header checks (marker, version, flags, githash) as for .olean
+-        ir.push_back(read_part(base + ".ir"));      // must exist (the official read fails otherwise)
++        bool mm0 = false, mm1 = false;
++        ir.push_back(read_part_impl(base + ".ir.sig", true, &mm0));  // header checks (marker, version, flags, githash)
++        ir.push_back(read_part_impl(base + ".ir", true, &mm1));      // must exist (the official read fails otherwise)
+         uint64_t iroot;
+-        memcpy(&iroot, ir[1].ptr + 0x58, 8);
++        memcpy(&iroot, ir[1].ptr + OLEAN_ROOT_OFF, 8);
+         validate_md(ir, iroot, base + ".ir");
++        free_temp_part(ir[0], mm0, ir[0].flen);
++        free_temp_part(ir[1], mm1, ir[1].flen);
+     }
+ }
+ static void imports_of(const std::vector<Module>& mods, uint32_t mi, std::vector<std::vector<std::string>>& out) {
+@@ -4713,6 +4837,14 @@ static void run(Args& a) {
+ 
+     // ---- constant names, interned in parallel per module; then finalizeImport's duplicate rule in import order
+     std::vector<std::vector<std::pair<uint32_t, P>>> per_mod(order.size());
++#ifdef FV_OLEAN_V4
++    // D22: from Lean 4.37 on, finalizeImport takes each module's constants from its prefix tree `constTrie?` (never from
++    // the constNames/constants arrays): the (key, value) entries of the tree are what `env.find?` sees.  They are
++    // collected here by walking the tree, which is checked to be the tree the official lookups assume: the root is an
++    // `inner` node with key `anonymous`, every child key extends its parent's key by exactly one component, children are
++    // sorted by cached key hash (verified to be Name.hash by intern_name) and no two siblings have the same key.
++    if (a.whole_env) die("whole-environment mode is not supported natively for Lean >= 4.37 (declining)");
++#endif
+     {
+         std::atomic<size_t> next{0};
+         std::vector<std::function<void()>> fns;
+@@ -4729,11 +4861,49 @@ static void run(Args& a) {
+                     if (arr_size(names) != n) die("constNames/constants size mismatch in " + mods[mi].name);
+                     auto& v = per_mod[i];
+                     v.reserve(n);
++#ifdef FV_OLEAN_V4
++                    {
++                        const std::string& mn = mods[mi].name;
++                        P root = x->f(mi, x->f(mi, d, 5), 0);  // (constTrie? = some root), validated by validate_md
++                        if (tag(root) != 1 || !is_scalar(rawf(root, 0)) || rawf(root, 0) != 1)
++                            die("constant prefix tree root is not `inner anonymous` in " + mn + " (declining)");
++                        struct Fr { P node; uint32_t id; };
++                        std::vector<Fr> st;
++                        st.push_back(Fr{root, 0});
++                        std::vector<std::pair<uint64_t, uint32_t>> kids;  // (cached key hash, key id) of one node
++                        while (!st.empty()) {
++                            Fr fr = st.back();
++                            st.pop_back();
++                            uint8_t t = tag(fr.node);
++                            if (t != 1) v.push_back({fr.id, x->tr(mi, rawf(fr.node, 1))});  // leaf / node: an entry
++                            if (t == 0) continue;
++                            P arr = x->f(mi, fr.node, t == 1 ? 1 : 2);
++                            size_t m = arr_size(arr);
++                            kids.clear();
++                            for (size_t j = 0; j < m; j++) {
++                                P c = x->tr(mi, arr_raw(arr, j));
++                                uint64_t kr = rawf(c, 0);
++                                if (is_scalar(kr)) die("anonymous key below the root of the prefix tree in " + mn + " (declining)");
++                                uint32_t cid = x->intern_name(mi, kr);
++                                if (x->names.get(cid).key.pre != fr.id)
++                                    die("prefix tree key does not extend its parent's key in " + mn + " (declining)");
++                                uint64_t h = sc_u64(x->tr(mi, kr), 0);
++                                if (!kids.empty() && h < kids.back().first)
++                                    die("prefix tree children not sorted by key hash in " + mn + " (declining)");
++                                for (size_t q = kids.size(); q-- > 0 && kids[q].first == h;)
++                                    if (kids[q].second == cid) die("duplicate prefix tree key in " + mn + " (declining)");
++                                kids.push_back({h, cid});
++                                st.push_back(Fr{c, cid});
++                            }
++                        }
++                    }
++#else
+                     for (size_t j = 0; j < n; j++) {
+                         uint32_t nm = x->intern_name(mi, arr_raw(names, j));
+                         P ci = x->tr(mi, arr_raw(consts, j));
+                         v.push_back({nm, ci});
+                     }
++#endif
+                 }
+             });
+         }

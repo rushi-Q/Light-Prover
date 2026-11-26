@@ -1,0 +1,81 @@
+{
+  "api_version": "1.0",
+  "mode": "batch_attempt",
+  "trust": "sound",
+  "count": 2,
+  "accepted_count": 2,
+  "best_accepted_index": 0,
+  "wall_s": 20.8707,
+  "results": [
+    {
+      "id": "library",
+      "index": 0,
+      "result": {
+        "api_version": "1.0",
+        "mode": "attempt",
+        "verdict": "ACCEPTED",
+        "accepted": true,
+        "reward": 1.0,
+        "exit_code": 0,
+        "trust": "sound",
+        "verdict_basis": "SOUND (fvserve): official judge code (ccmp compareAt+checkAxioms) + official Lean kernel (pinned check-sound judge) (pleanchecker) + required second kernel (gruszka) on pinned official challenge export",
+        "reason": "check-sound.sh ACCEPTED a check whose config listed it (check r0)",
+        "target": {
+          "pset": "arithmetic",
+          "theorem": "qaAddZero"
+        },
+        "timing": {
+          "total_s": 8.414,
+          "queue_s": 0.003,
+          "build_s": 0.473,
+          "export_s": 0.371,
+          "check_s": 7.452,
+          "overhead_ms": 9.2,
+          "mcp_wall_s": 8.4232
+        },
+        "diagnostics": [],
+        "compiler_output": "",
+        "soundness": null,
+        "frontier": null,
+        "statement_audit": null,
+        "warnings": [],
+        "raw": null
+      }
+    },
+    {
+      "id": "reflexivity",
+      "index": 1,
+      "result": {
+        "api_version": "1.0",
+        "mode": "attempt",
+        "verdict": "ACCEPTED",
+        "accepted": true,
+        "reward": 1.0,
+        "exit_code": 0,
+        "trust": "sound",
+        "verdict_basis": "SOUND (fvserve): official judge code (ccmp compareAt+checkAxioms) + official Lean kernel (pinned check-sound judge) (pleanchecker) + required second kernel (gruszka) on pinned official challenge export",
+        "reason": "check-sound.sh ACCEPTED a check whose config listed it (check r0)",
+        "target": {
+          "pset": "arithmetic",
+          "theorem": "qaAddZero"
+        },
+        "timing": {
+          "total_s": 20.796,
+          "queue_s": 8.359,
+          "build_s": 0.781,
+          "export_s": 0.65,
+          "check_s": 10.881,
+          "overhead_ms": 59.599,
+          "mcp_wall_s": 20.8556
+        },
+        "diagnostics": [],
+        "compiler_output": "",
+        "soundness": null,
+        "frontier": null,
+        "statement_audit": null,
+        "warnings": [],
+        "raw": null
+      }
+    }
+  ]
+}

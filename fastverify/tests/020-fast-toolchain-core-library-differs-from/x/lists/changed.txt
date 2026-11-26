@@ -1,0 +1,38 @@
+Lean.Compiler.LCNF.Specialize.cacheSpec		VALUE
+Lean.Compiler.LCNF.Specialize.findSpecCache?		VALUE
+Lean.Environment.realizeConst		VALUE
+Lean.Expr.instantiateBetaRevRange		VALUE
+Lean.LibrarySuggestions.localSymbolFrequencyMap		VALUE
+Lean.Meta.arrowDomainsN		VALUE
+Lean.Parser.categoryParserFnImpl		VALUE
+Lean.Parser.compileParserDescr		VALUE
+Lean.ScopedEnvExtension.activateScoped		VALUE
+Lean.ScopedEnvExtension.addEntryFn		VALUE
+Lean.ScopedEnvExtension.getState		VALUE
+Lean.ScopedEnvExtension.modifyState		VALUE
+Lean.Server.getModuleContainingDecl?		VALUE
+Lean.finalizeImport		VALUE
+Lean.importModulesCore		VALUE
+Lean.registerScopedEnvExtensionUnsafe		VALUE
+Lean.registerSimpleScopedEnvExtension		VALUE
+Lean.stateStackModify._f		VALUE
+Lean.stateStackModify._sunfold		VALUE
+Lean.stateStackModify._unsafe_rec		VALUE
+_private.Lean.Compiler.LCNF.Specialize.0.Lean.Compiler.LCNF.Specialize.mkSpecDecl.go		VALUE
+_private.Lean.Compiler.LCNF.Specialize.0.Lean.Compiler.LCNF.Specialize.specCacheExt	TYPE	VALUE
+_private.Lean.Compiler.LCNF.Specialize.0.Lean.Compiler.LCNF.Specialize.specializeApp?		VALUE
+_private.Lean.Elab.MutualInductive.0.Lean.Elab.Command.isPropCandidate		VALUE
+_private.Lean.Environment.0.Lean.Environment.replayConsts.replayKernel		VALUE
+_private.Lean.Environment.0.Lean.PersistentEnvExtension.getModuleIREntries.unsafe_1		VALUE
+_private.Lean.Environment.0.Lean.importModulesCore.go	TYPE	VALUE
+_private.Lean.Environment.0.Lean.importModulesCore.go._unsafe_rec	TYPE	VALUE
+_private.Lean.Environment.0.Lean.importModulesCore.loadData	TYPE	VALUE
+_private.Lean.Environment.0.Lean.importModulesCore.loadIR	TYPE	VALUE
+_private.Lean.Environment.0.Lean.readIRPartsOfMod	TYPE	VALUE
+_private.Lean.Environment.0.Lean.readModuleDataPartsOfMod	TYPE	VALUE
+_private.Lean.LibrarySuggestions.SineQuaNon.0.Lean.LibrarySuggestions.SineQuaNon.prepareTriggers		VALUE
+_private.Lean.LibrarySuggestions.SymbolFrequency.0.Lean.Environment.unsafeRunMetaM		VALUE
+_private.Lean.Meta.FunInfo.0.Lean.Meta.collectDeps		VALUE
+_private.Lean.Meta.FunInfo.0.Lean.Meta.getFunInfoAux		VALUE
+_private.Lean.Meta.InferType.0.Lean.Expr.instantiateBetaRevRange.visit._unsafe_rec		VALUE
+_private.Lean.Parser.Extension.0.Lean.Parser.ParserExtension.OLeanEntry.toEntry		VALUE

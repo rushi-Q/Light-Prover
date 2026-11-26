@@ -1,0 +1,40 @@
+# check-B regression cases. Columns (TAB-separated): name  finding  solution  challenge  config  official_nanoda  official_leanonly  heavy
+#   paths: $X = the package's tests/ dir (tests/NNN-*/x = snapshots of the finding dirs), $BENCH = bench inputs, $G = generated inputs (gen.sh GENDIR); config = the finding's comparator config (nanoda);
+#   the runner derives the Lean-only variant (external_kernels removed). official_* = recorded OFFICIAL lake comparator 4.36
+#   exit status (0 accept, 1 reject; '?' = not recorded, computed by `regress.sh --official`). heavy=1: minutes.
+control-026	026	$X/026-*/x/Main.export	$X/026-*/x/Challenge.export	$X/026-*/x/cfg.json	0	0	0
+005-arena-path	005	$G/arena/suite/s.export	$X/005-*/x/Challenge.export	$X/005-*/x/cfg.json	1	1	0
+016-sorry-solution	016	$X/005-*/x/Challenge.export	$X/005-*/x/Challenge.export	$X/005-*/x/cfg.json	1	1	0
+026-nonuniform	026	$X/026-*/x/sol_nonuniform.export	$X/026-*/x/Challenge.export	$X/026-*/x/cfg.json	1	1	0
+026-nestedprefix	026	$X/026-*/x/sol_nestedprefix.export	$X/026-*/x/Challenge.export	$X/026-*/x/cfg.json	1	1	0
+026b-headredex	026	$X/026-*/x/sol_headredex.export	$X/026-*/x/Challenge.export	$X/026-*/x/cfg.json	1	1	0
+024-honest	024	$X/024-*/x/solution.export	$X/024-*/x/challenge.export	$X/024-*/x/comparator.json	0	0	0
+024-dupexpr	024	$X/024-*/x/solution-dupexpr.export	$X/024-*/x/challenge.export	$X/024-*/x/comparator.json	1	0	0
+032-name-2^32	032	$X/032-*/x/solution.export	$X/032-*/x/challenge.export	$X/032-*/x/comparator.json	1	0	0
+045-height-2^16	045	$X/045-*/x/toy/height/solution.export	$X/045-*/x/toy/height/challenge.export	$X/032-*/x/comparator.json	1	0	0
+012-replay-order	012	$X/012-*/x/toy/str/solution.export	$X/012-*/x/toy/str/challenge.export	$X/032-*/x/comparator.json	1	1	0
+029-shiftRight	029	$X/029-*/x/toy/shr/solution.export	$X/029-*/x/toy/shr/challenge.export	$X/032-*/x/comparator.json	1	0	1
+047-100k-nested-id	047	$X/047-*/x/toy/deepE/solution.export	$X/047-*/x/toy/deepE/challenge.export	$X/032-*/x/comparator.json	1	0	0
+044-bvar-2^20	044	$X/044-*/x/sol_bvar2p20.export	$X/044-*/x/Challenge.export	$X/044-*/x/cfg.json	1	1	0
+044-level-2^24	044	$G/044/sol-level.export	$X/044-*/x/Challenge.export	$X/044-*/x/cfg.json	1	1	1
+049-honest	049	$X/049-*/x/solution.export	$X/049-*/x/challenge.export	$X/049-*/x/comparator.json	0	0	0
+053-anonymous-name	053	$X/053-*/x/solution.export	$X/053-*/x/challenge.export	$X/053-*/x/comparator.json	0	0	0
+055-nested-tcparam	055	$X/055-*/x/Main.export	$X/055-*/x/Challenge.export	$X/055-*/x/cfg.json	0	0	0
+056-indexed-proj	056	$X/056-*/x/Main.export	$X/056-*/x/Challenge.export	$X/056-*/x/cfg.json	1	0	0
+058-reflexive-nested	058	$X/058-*/x/Main.export	$X/058-*/x/Challenge.export	$X/058-*/x/cfg.json	0	0	0
+060-ulevels-65535	060	$X/060-*/x/solution-65535.export	$X/060-*/x/challenge.export	$X/060-*/x/comparator.json	0	0	0
+060-ulevels-65536	060	$X/060-*/x/solution-65536.export	$X/060-*/x/challenge.export	$X/060-*/x/comparator.json	0	0	0
+064-heavy-decide	064	$X/064-*/x/Main.export	$X/064-*/x/Challenge.export	$X/064-*/x/cfg.json	0	0	1
+065-natlit-65535	065	$X/065-*/x/solution-65535.export	$X/065-*/x/challenge.export	$X/065-*/x/comparator.json	0	0	0
+065-natlit-65536	065	$X/065-*/x/solution-65536.export	$X/065-*/x/challenge.export	$X/065-*/x/comparator.json	0	0	0
+068-control	068	$G/068/Main.export	$G/068/Challenge.export	$X/068-*/x/cfg.json	0	0	0
+068-Helper-isReflexive	068	$G/068/sol_Helper_isReflexive.export	$G/068/Challenge.export	$X/068-*/x/cfg.json	0	0	0
+068-Tree-isReflexive	068	$G/068/sol_Tree_isReflexive.export	$G/068/Challenge.export	$X/068-*/x/cfg.json	0	0	0
+068-Tree-numNested	068	$G/068/sol_Tree_numNested.export	$G/068/Challenge.export	$X/068-*/x/cfg.json	0	0	0
+068-Tree-numNested0	068	$G/068/sol_Tree_numNested0.export	$G/068/Challenge.export	$X/068-*/x/cfg.json	1	0	0
+071-bvars-32766	071	$G/071/sol-A-32766.export	$X/071-*/x/challenge.export	$X/071-*/x/comparator.json	0	0	0
+071-bvars-32768	071	$G/071/sol-A-32768.export	$X/071-*/x/challenge.export	$X/071-*/x/comparator.json	0	0	0
+071-bvars-65535	071	$G/071/sol-A-65535.export	$X/071-*/x/challenge.export	$X/071-*/x/comparator.json	0	0	0
+056-neg-proj-idx1	056	$G/056neg/sol-idx1.export	$X/056-*/x/Challenge.export	$X/056-*/x/cfg.json	1	1	0
+056-neg-proj-idx2	056	$G/056neg/sol-idx2.export	$X/056-*/x/Challenge.export	$X/056-*/x/cfg.json	1	1	0
+039-rhmid-late-sparse	039	$G/039/late-sparse.export	$BENCH/rh-mid/challenge/challenge.export	$BENCH/rh-mid/challenge/comparator.nanoda.json	1	0	1

@@ -1,0 +1,18 @@
+{
+ "challenge_module": "Challenge",
+ "solution_module": "Solution",
+ "theorem_names": [
+  "Shp.main"
+ ],
+ "definition_names": [],
+ "permitted_axioms": [
+  "propext",
+  "Quot.sound",
+  "Classical.choice"
+ ],
+ "external_kernels": {
+  "nanoda": [
+   "nanoda_bin"
+  ]
+ }
+}

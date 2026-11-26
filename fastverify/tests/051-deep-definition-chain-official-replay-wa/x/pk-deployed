@@ -1,0 +1,14 @@
+#!/bin/bash
+# Run the DEPLOYED /scratch/fastverify/checkers/pchk/.lake/build/bin/pleanchecker-k (needs glibc>=2.38) on a glibc-2.35 host inside a
+# throw-away ubuntu:24.04 container: no network, own uid, /scratch/fastverify read-only, host libgmp/libuv/libssl/libcrypto
+# bind-mounted. Directories in $PK_BIND (colon-separated) are bind-mounted read-only at the same path.
+# usage: pk-deployed [pleanchecker args...]
+set -u
+IMG=${FV_DOCKER_IMAGE:-$LIGHT_LEAN/repro-bin/ubuntu-24.04.tar}
+docker image inspect ubuntu:24.04 >/dev/null 2>&1 || docker load -q -i "$IMG" >/dev/null 2>&1 || { echo "pk-deployed: cannot load $IMG" >&2; exit 126; }
+L=/lib/x86_64-linux-gnu
+B="-v /scratch/fastverify:/scratch/fastverify:ro"
+for l in libgmp.so.10 libuv.so.1 libssl.so.3 libcrypto.so.3; do B="$B -v $L/$l:/hostlib/$l:ro"; done
+IFS=: read -ra DS <<< "${PK_BIND:-}"; for d in "${DS[@]}"; do [ -n "$d" ] && B="$B -v $d:$d:ro"; done
+exec docker run --rm -i --pull never --network none -u "$(id -u):$(id -g)" $B -e LD_LIBRARY_PATH=/hostlib -e LEAN_ABORT_ON_PANIC=1 \
+  ubuntu:24.04 /scratch/fastverify/checkers/pchk/.lake/build/bin/pleanchecker-k "$@"

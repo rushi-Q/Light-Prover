@@ -1,0 +1,20 @@
+case	expected	verdict	trust	exit	seconds	build_option	export_option	status	basis
+P1	ACCEPTED	ACCEPTED	sound	0	107	B3	E1	PASS	SOUND: challenge export as given (sha256 checked by the caller); statements + axioms: official Lean 4.36 comparator judge code (ccmp compareAt + checkAxioms); k
+P1-a-sorry	REJECTED	REJECTED	sound	1	99	B3	E1	PASS	SOUND: rejected by sound (error: Illegal axiom detected: 'sorryAx')
+P1-b-axiom	REJECTED	REJECTED	sound	1	106	B3	E1	PASS	SOUND: rejected by sound (error: Illegal axiom detected: 'cheat_nt02')
+P1-c-weaker	REJECTED	REJECTED	sound	1	100	B3	E1	PASS	SOUND: rejected by sound (error: Challenge and solution theorem statement do not match: 'nt02')
+P1-c2-defeq	REJECTED	REJECTED	sound	1	100	B3	E1	PASS	SOUND: rejected by sound (error: Challenge and solution theorem statement do not match: 'nt01')
+P1-e-binder	ACCEPTED	ACCEPTED	sound	0	105	B3	E1	PASS	SOUND: challenge export as given (sha256 checked by the caller); statements + axioms: official Lean 4.36 comparator judge code (ccmp compareAt + checkAxioms); k
+P1-f-builderror	REJECTED	REJECTED	None	1	144	B1	None	PASS	build failed (the exact build B1 - official lean, Lake's plan - fails, so the official build fails too)
+P2	ACCEPTED	ACCEPTED	sound	0	104	B3	E1	PASS	SOUND: challenge export as given (sha256 checked by the caller); statements + axioms: official Lean 4.36 comparator judge code (ccmp compareAt + checkAxioms); k
+P2-a-sorry	REJECTED	REJECTED	sound	1	99	B3	E1	PASS	SOUND: rejected by sound (error: Illegal axiom detected: 'sorryAx')
+P2-b-axiom	REJECTED	REJECTED	sound	1	96	B3	E1	PASS	SOUND: rejected by sound (error: Illegal axiom detected: 'cheat_an04')
+P2-c-stronger	REJECTED	REJECTED	sound	1	91	B3	E1	PASS	SOUND: rejected by sound (error: Challenge and solution theorem statement do not match: 'an03')
+P2-g-nativedecide	REJECTED	REJECTED	sound	1	91	B3	E1	PASS	SOUND: rejected by sound (error: Illegal axiom detected: 'aux_nd._native.native_decide.ax_1_1')
+P3	ACCEPTED	ACCEPTED	sound	0	87	B3	E1	PASS	SOUND: challenge export as given (sha256 checked by the caller); statements + axioms: official Lean 4.36 comparator judge code (ccmp compareAt + checkAxioms); k
+P3-a-sorry	REJECTED	REJECTED	sound	1	82	B3	E1	PASS	SOUND: rejected by sound (error: Illegal axiom detected: 'sorryAx')
+P3-b-axiom	REJECTED	REJECTED	sound	1	84	B3	E1	PASS	SOUND: rejected by sound (error: Illegal axiom detected: 'cheat_al22')
+P3-c-stmt	REJECTED	REJECTED	sound	1	88	B3	E1	PASS	SOUND: rejected by sound (error: Challenge and solution theorem statement do not match: 'al14')
+P3-d1-fixeddef	REJECTED	REJECTED	sound	1	90	B3	E1	PASS	SOUND: rejected by sound (error: Const does not match between challenge and target 'IsPerfectNum')
+P3-d2-holedef	ACCEPTED	ACCEPTED	sound	0	93	B3	E1	PASS	SOUND: challenge export as given (sha256 checked by the caller); statements + axioms: official Lean 4.36 comparator judge code (ccmp compareAt + checkAxioms); k
+P3-h-missing	REJECTED	REJECTED	None	1	92	B3	E0	PASS	export failed (the official lean4export fails)

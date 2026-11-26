@@ -1,0 +1,3 @@
+# case official_rc official_export_sha256[:16]  (from a live official run; matches the values recorded with the reproduction)
+proj-export 0 1de1ace2502896a7
+proj-accept 1 -

@@ -1,0 +1,5 @@
+name = "sol"
+defaultTargets = ["Sol3"]
+
+[[lean_lib]]
+name = "Sol3"

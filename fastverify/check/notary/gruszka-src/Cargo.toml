@@ -1,0 +1,42 @@
+[package]
+name = "gruszka"
+version = "0.1.1"
+edition = "2024"
+description = "A Lean 4 kernel: normalization by evaluation over Susz exports"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jasisz/gruszka"
+readme = "README.md"
+keywords = ["lean", "lean4", "kernel", "type-checker", "proof-checker"]
+categories = ["mathematics", "command-line-utilities"]
+exclude = ["data/", "tests/", "target-knobs/", "arena-draft/", "STATUS.md"]
+
+[workspace]
+# K02: the susz packer (0.1.4, vendored) is built in the same workspace for the arena entry
+members = [".", "vendor/susz"]
+
+[dependencies]
+susz = { path = "vendor/susz", features = ["mmap"] }
+num-bigint = "0.4"
+num-traits = "0.2"
+num-integer = "0.1"
+rustc-hash = "2"
+smallvec = { version = "1", features = ["union"] }
+mimalloc = { version = "0.1.52", default-features = false, optional = true }
+
+[features]
+default = ["mimalloc"]
+cnt = []
+# milestone 15: configuration switches (SK_*) read at start; off: defaults as constants
+knobs = []
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+panic = "unwind"
+debug = 1
+
+# milestone 15: release code with debug assertions on (the arena invariants
+# behind the unchecked reads); gates run on it too
+[profile.release-da]
+inherits = "release"
+debug-assertions = true

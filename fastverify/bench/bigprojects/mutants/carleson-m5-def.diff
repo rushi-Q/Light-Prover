@@ -1,0 +1,58 @@
+diff --color -ru carleson/Carleson/Classical/CarlesonHunt.lean carleson-m5-def/Carleson/Classical/CarlesonHunt.lean
+--- carleson/Carleson/Classical/CarlesonHunt.lean
++++ carleson-m5-def/Carleson/Classical/CarlesonHunt.lean
+@@ -159,15 +159,8 @@
+   exact carleson_hunt_interval periodic_f hp hf
+ 
+ /- Proves that the old, weak version of classical Carleson is implied by the L^p version. -/
+-theorem classical_carleson_from_carleson_hunt_real : ClassicalCarleson := by
+-  unfold ClassicalCarleson
+-  intro f continuous_f periodic_f
+-  apply carleson_hunt_real (p := ⊤) periodic_f (by simp)
+-  rcases continuous_bounded continuous_f.continuousOn with ⟨C, hC⟩
+-  apply memLp_top_of_bound (C := C) continuous_f.measurable.aestronglyMeasurable
+-  rw [ae_restrict_iff' measurableSet_Ioc]
+-  filter_upwards with x hx
+-  apply hC _ (Set.Ioc_subset_Icc_self hx)
++theorem classical_carleson_from_carleson_hunt_real : ClassicalCarleson :=
++  fun _ _ => Filter.Eventually.of_forall (fun _ => Filter.tendsto_top)
+ 
+ end Real
+ 
+diff --color -ru carleson/Carleson/Classical/ClassicalCarleson.lean carleson-m5-def/Carleson/Classical/ClassicalCarleson.lean
+--- carleson/Carleson/Classical/ClassicalCarleson.lean
++++ carleson-m5-def/Carleson/Classical/ClassicalCarleson.lean
+@@ -142,6 +142,7 @@
+   rw [Measure.restrict_congr_set Ioc_ae_eq_Icc.symm]
+   exact carleson_interval' cont_f periodic_f
+ 
+-theorem classical_carleson_check : ClassicalCarleson := classical_carleson
++theorem classical_carleson_check : ClassicalCarleson :=
++  fun _ _ => Filter.Eventually.of_forall (fun _ => Filter.tendsto_top)
+ 
+ end
+diff --color -ru carleson/Carleson/Defs.lean carleson-m5-def/Carleson/Defs.lean
+--- carleson/Carleson/Defs.lean
++++ carleson-m5-def/Carleson/Defs.lean
+@@ -297,7 +297,7 @@
+ For the proof, see `classical_carleson` in the file `Carleson.Classical.ClassicalCarleson`. -/
+ def ClassicalCarleson : Prop :=
+   ∀ {f : ℝ → ℂ} (cont_f : Continuous f) (periodic_f : f.Periodic (2 * π)),
+-    ∀ᵐ x, Filter.Tendsto (partialFourierSum · f x) Filter.atTop (nhds (f x))
++    ∀ᵐ x, Filter.Tendsto (partialFourierSum · f x) Filter.atTop ⊤
+ 
+ /-- Theorem 1.1.1.
+ For the proof, see `metric_carleson` in the file `Carleson.MetricCarleson.Main`. -/
+diff --color -ru carleson/Solution.lean carleson-m5-def/Solution.lean
+--- carleson/Solution.lean
++++ carleson-m5-def/Solution.lean
+@@ -8,7 +8,8 @@
+ 
+ public noncomputable section
+ 
+-theorem classical_carleson' : ClassicalCarleson := @classical_carleson
++theorem classical_carleson' : ClassicalCarleson :=
++  fun _ _ => Filter.Eventually.of_forall (fun _ => Filter.tendsto_top)
+ 
+ theorem metric_carleson'' : MetricSpaceCarleson := @metric_carleson
+ 

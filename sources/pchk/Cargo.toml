@@ -1,0 +1,15 @@
+# Cargo workspace so that the crate fetch step (runs iff {src}/Cargo.lock exists) fetches nanoda's crates.
+# nanoda/ = nanoda_lib @ 4c544ed (the nanoda_bin bundled with Lean 4.36) + speedups (branch c/c07 of the nanoda fork).
+# Profiles must live in the workspace root: these are nanoda's own release/test profiles verbatim (overflow-checks stay ON).
+[workspace]
+members = ["nanoda"]
+resolver = "2"
+
+[profile.release]
+opt-level=3
+overflow-checks=true
+lto=true
+
+[profile.test]
+opt-level=3
+overflow-checks=true

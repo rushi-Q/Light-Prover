@@ -1,0 +1,39 @@
+{
+  "api_version": "1.0",
+  "mode": [
+    "attempt"
+  ],
+  "verdict": "REJECTED",
+  "accepted": false,
+  "reward": 0.0,
+  "exit_code": 1,
+  "trust": "sound",
+  "verdict_basis": "rejected: no theorem declaration found in source",
+  "reason": "no theorem declaration found in source",
+  "target": {
+    "pset": "arithmetic",
+    "theorem": null
+  },
+  "timing": {
+    "total_s": 0.0001
+  },
+  "diagnostics": [
+    {
+      "rule_id": "FV001",
+      "severity": "error",
+      "file": null,
+      "line": null,
+      "column": null,
+      "end_line": null,
+      "end_column": null,
+      "message": "no theorem declaration found in source",
+      "source": "fastverify"
+    }
+  ],
+  "compiler_output": null,
+  "soundness": null,
+  "frontier": null,
+  "statement_audit": null,
+  "warnings": [],
+  "raw": null
+}

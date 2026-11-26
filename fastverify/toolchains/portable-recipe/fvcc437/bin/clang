@@ -1,0 +1,10 @@
+#!/bin/sh
+# portable-toolchain build: clang 18.1.8 (conda-forge clangdev 18.1.8 default_h99862b1_18) targeting the OLD-glibc userland it
+# runs in (manylinux_2_28 root: glibc 2.28 headers/libs; gcc-toolset-13 13.3.1 libstdc++/libgcc); conda default config ignored.
+# LINK steps also see /opt/glibc217/lib first (CentOS 7 libm.so.6, glibc 2.17): link-time only, so expf/logf/powf/... bind to
+# their GLIBC_2.2.5 versions like the official release (built against glibc 2.26) instead of glibc 2.28's GLIBC_2.27 defaults.
+# clang 18 environment (mkenv.sh): $FVCC_CENV18, default $PORT_WORK/cenv18.
+L=-L/opt/glibc217/lib
+for a in "$@"; do case "$a" in -c|-S|-E|-M|-MM) L=;; esac; done
+exec "${FVCC_CENV18:-${PORT_WORK:?work root of the portable-toolchain recipe, or set FVCC_CENV18 (required)}/cenv18}/bin/clang-18" --no-default-config --target=x86_64-pc-linux-gnu --sysroot=/ \
+  --gcc-install-dir=/opt/rh/gcc-toolset-13/root/usr/lib/gcc/x86_64-redhat-linux/13 $L "$@"

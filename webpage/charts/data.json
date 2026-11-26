@@ -1,0 +1,194 @@
+{
+ "_readme": [
+  "Single source of every number drawn in webpage/assets/*.svg and the table views in webpage/index.html.",
+  "Edit the values here, then run: python3 -I webpage/charts/make_charts.py",
+  "Times are seconds; null means 'not measured' and is drawn as 'pending'. Every value, with its conditions, is in docs/benchmarks.md.",
+  "rh_timelapse takes its three totals from rh_stages; seconds_per_hour is its playback rate when make_charts.py animates (ANIMATE = True)."
+ ],
+ "rh_timelapse": {
+  "title": "Time to a verified Riemann Hypothesis proof",
+  "subtitle": "Build, export and judge from sources on server A (384 threads), Lean 4.33.1; linear time axis.",
+  "source": "(b) kernel replay only, no statement or axiom check. Official build: lean per module. Source: docs/benchmarks.md",
+  "seconds_per_hour": 0.1,
+  "rows": [
+   {
+    "name": "Light-Prover",
+    "detail": "--preset sound, median of 3 runs"
+   },
+   {
+    "name": "Official checker (b)",
+    "detail": "leanchecker, one allocator setting"
+   },
+   {
+    "name": "Official comparator (a)",
+    "detail": "lake comparator, default, shared server"
+   }
+  ]
+ },
+ "rh_stages": {
+  "title": "Riemann Hypothesis proof: time per stage, official tools and Light-Prover",
+  "subtitle": [
+   "175,187 modules, Lean 4.33.1; server A, 384 threads; log scale. Light-Prover: --preset sound,",
+   "median of 3 runs on a pre-release snapshot with the same judge binaries as v0.1.",
+   "Official: one run per row."
+  ],
+  "source": [
+   "(a) unmodified lake comparator, default settings (Lean-only configuration), shared server. (b) official",
+   "leanchecker with MIMALLOC_GENERIC_COLLECT=1000000: kernel replay only, no statement / axiom comparison.",
+   "Build: lean per module under a direct scheduler, a proxy for lake build. The Light-Prover total includes",
+   "about 12 s of preflight and preparation. Source: docs/benchmarks.md"
+  ],
+  "stages": [
+   {
+    "name": "Build",
+    "official_s": 5222,
+    "light_prover_s": 1338.1
+   },
+   {
+    "name": "Export",
+    "official_s": 5306,
+    "light_prover_s": 25.3
+   },
+   {
+    "name": "Judge (a)",
+    "official_s": 189899,
+    "light_prover_s": 437.5
+   },
+   {
+    "name": "Judge (b)",
+    "official_s": 47563,
+    "light_prover_s": 437.5
+   },
+   {
+    "name": "Total with (a)",
+    "official_s": 200427,
+    "light_prover_s": 1811.9
+   },
+   {
+    "name": "Total with (b)",
+    "official_s": 58091,
+    "light_prover_s": 1811.9
+   }
+  ]
+ },
+ "judge": {
+  "title": "Judging the 61.6 GB Riemann Hypothesis export",
+  "subtitle": [
+   "Light-Prover judge only, one run per row unless noted. The proof was ACCEPTED on every row;",
+   "four mutated exports were REJECTED on each machine and by the low-memory judge.",
+   "Official: lake comparator 52.7 h; leanchecker with one allocator setting 13.2 h (kernel only)."
+  ],
+  "source": [
+   "Memory-limited rows: cgroup limit, swap off. The first 128 GB run ran beside its four mutant checks;",
+   "the second 128 GB run and the 64 GB run ran alongside other runs. Machine C shared and memory-contended in",
+   "both runs (the first spent 404.2 s in the parse). Source: docs/benchmarks.md"
+  ],
+  "rows": [
+   {
+    "name": "server A, 384 threads",
+    "detail": "sound judge, median of 2",
+    "light_prover_s": 423.2
+   },
+   {
+    "name": "server A, 192 threads",
+    "detail": "sound judge",
+    "light_prover_s": 503.9
+   },
+   {
+    "name": "server A, 64 threads",
+    "detail": "sound judge",
+    "light_prover_s": 827.1
+   },
+   {
+    "name": "machine B, 192 threads",
+    "detail": "sound judge",
+    "light_prover_s": 1315.9
+   },
+   {
+    "name": "machine C, 192 threads",
+    "detail": "sound judge, first run",
+    "light_prover_s": 1584.8
+   },
+   {
+    "name": "machine C, 192 threads",
+    "detail": "sound judge, second run",
+    "light_prover_s": 1086.6
+   },
+   {
+    "name": "server A, 32 threads",
+    "detail": "low-memory judge, 128 GB, with mutant checks",
+    "light_prover_s": 1297
+   },
+   {
+    "name": "server A, 32 threads",
+    "detail": "low-memory judge, 128 GB, second run",
+    "light_prover_s": 1589.0
+   },
+   {
+    "name": "server A, 24 threads",
+    "detail": "ultra-low-memory judge, 64 GB",
+    "light_prover_s": 4265.6
+   }
+  ]
+ },
+ "projects": {
+  "title": "Official time / Light-Prover time, other projects",
+  "subtitle": [
+   "End to end from sources, 6-100 CPUs per flow, both flows on the same CPUs, dependencies prebuilt,",
+   "one run each unless noted; log scale around 1x. Below 1x Light-Prover was slower.",
+   "Same verdicts on every row."
+  ],
+  "source": [
+   "* Light-Prover on the released package (two runs, the first shown); official time from an earlier",
+   "run on the same machine type. LNSym: first run on a shared host (0.7x in a rerun on another host).",
+   "BerkovichUncu: the smallest ratio of the 77 mathematics claims. Source: docs/benchmarks.md (other projects)"
+  ],
+  "projects": [
+   {
+    "name": "flt-regular *",
+    "official_s": 367.75,
+    "light_prover_s": 59.6
+   },
+   {
+    "name": "sphere-eversion",
+    "official_s": 291.24,
+    "light_prover_s": 141
+   },
+   {
+    "name": "PFR *",
+    "official_s": 193.04,
+    "light_prover_s": 105.7
+   },
+   {
+    "name": "PrimeNumberTheoremAnd",
+    "official_s": 520.02,
+    "light_prover_s": 303
+   },
+   {
+    "name": "Carleson",
+    "official_s": 263.03,
+    "light_prover_s": 166
+   },
+   {
+    "name": "openai/math, 4 new challenges",
+    "official_s": 6325,
+    "light_prover_s": 4551
+   },
+   {
+    "name": "Aeneas examples",
+    "official_s": 212.2,
+    "light_prover_s": 214.2
+   },
+   {
+    "name": "AxiomMath BerkovichUncu",
+    "official_s": 32.27,
+    "light_prover_s": 51
+   },
+   {
+    "name": "LNSym",
+    "official_s": 151.1,
+    "light_prover_s": 249.1
+   }
+  ]
+ }
+}
