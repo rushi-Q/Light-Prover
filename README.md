@@ -3,7 +3,8 @@
 Light-Prover checks that a Lean 4 project proves the statements of a pinned challenge, with the same answer as the
 official `lake comparator`, in less time and memory. The build and the export run outside the trusted part; a small
 pinned judge decides. It is meant for large formal proofs, AI provers and RL pipelines that need a sound verdict per
-attempt, and CI on proof repositories. Linux x86-64. Version 0.1.0, not externally audited.
+attempt, and CI on proof repositories. Linux x86-64; on macOS (Apple silicon) the three stages run natively as
+separate scripts ([docs/macos.md](docs/macos.md)). Version 0.1.0, not externally audited.
 
 <p align="center">
   <picture>
@@ -93,7 +94,7 @@ fastverify/bin/fv verify ./my-repo -c ./challenge --challenge-sha256 "$PIN" --co
 `$PIN` is the sha256 of the official `challenge.export`, `$CPIN` that of its `comparator.json`; both are required,
 because the configuration decides which statements and axioms are checked. Requirements: Linux x86-64 with glibc,
 bubblewrap, Python 3.10+, the official Lean toolchains via elan, and C/C++ and Rust toolchains to build the fast
-components. The repository ships sources and build recipes, no binaries.
+components. The repository ships sources and build recipes, no binaries. On a Mac: [docs/macos.md](docs/macos.md).
 
 ## What is in v0.1
 

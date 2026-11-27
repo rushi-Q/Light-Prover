@@ -38,6 +38,8 @@ uses only the standard library; nothing has to be installed with pip.
   Rust 1.97.1; the pinned binaries are installed under `$SCRATCH/fastverify-next/`;
 - `python3 -I fastverify/tools/configure.py --elan-home "$ELAN_HOME" --light-lean "$PWD"` writes the machine-local
   `fastverify/config/components.json`. It is git-ignored; never commit it.
+- on a Mac (Apple silicon), the suites listed in [docs/macos.md](docs/macos.md#tests) in place of the ones that need
+  `bwrap`; elsewhere they print SKIP or run only their rows that need no Mac.
 
 ## Running the tests
 

@@ -111,6 +111,8 @@ argument is in the [soundness model](concepts/soundness.md); measured costs are 
 ## Platform
 
 - Linux x86-64 with glibc only (no musl, as for the official Lean releases); bubblewrap 0.5 or later.
+- macOS on Apple silicon: the build, export and check stage scripts only, without the orchestrator and the services,
+  tested on macOS 27.2 only. What is missing there and what differs from Linux: [macos.md](macos.md).
 - Large Lean 4.37 module-system projects need a high `vm.max_map_count`: importing the main module of a large one can
   create several hundred thousand memory mappings, against a Linux default of 65,530; set at least 524,288.
 - The repository ships sources and recipes, no binaries and no build environment; rebuilds need the compilers, sysroots,
