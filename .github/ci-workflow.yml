@@ -81,6 +81,8 @@ jobs:
         run: bash fastverify/check/xversion/test/run.sh
       - name: sound-auto planner units (lib/autotune.py)
         run: python3 -I fastverify/tests/sound-auto/unit.py
+      - name: macOS judge, the rows that need no Mac (check/sound/macos)
+        run: python3 -I fastverify/tests/macos-judge/run.py
       - name: Resource budget tools
         run: bash fastverify/tests/budget/run.sh
       - name: Compression regressions (compress-failure-classes)
