@@ -39,7 +39,8 @@ for l in open(sys.argv[1]):
         r=json.loads(l)
         for ln in r.get("stdout_head","").split("\n"):
             if "PROBE" in ln: print(json.loads(ln)["data"])' "$W/env-probe/log-fast/sched.out" | head -1)
-if [ -n "$off" ] && [ "$off" = "$fast" ]; then echo "PASS env-probe: lean's LEAN_PATH/cwd/argv/environment identical under lake build and build.sh"
+if [ "$(uname -s)" = Darwin ]; then echo "SKIP env-probe: the probe module reads /proc/self/cmdline"
+elif [ -n "$off" ] && [ "$off" = "$fast" ]; then echo "PASS env-probe: lean's LEAN_PATH/cwd/argv/environment identical under lake build and build.sh"
 else echo "FAIL env-probe: official '$(echo "$off" | cut -c1-200)' vs fast '$(echo "$fast" | cut -c1-200)'"; fail=1; fi
 # menu: B2 (early release) must be exact too; B3 (unsafe) must run and be marked exact:false
 check libs-options SAME --preset B2

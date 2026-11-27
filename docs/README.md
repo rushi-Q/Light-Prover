@@ -12,6 +12,8 @@ the trusted judge, so they can be optimized for time and memory.
   per-repository daemon, the prover and RL attempt service with HTTP and MCP, the CI gate, choosing a configuration for
   your hardware, Lean versions.
 - [Large runs](large-runs.md) - verifications of the size of the Riemann Hypothesis proof on one machine.
+- [macOS](macos.md) - the build, export and check stages natively on Apple silicon: setup, what is missing, what
+  differs from Linux.
 
 ## Concepts
 

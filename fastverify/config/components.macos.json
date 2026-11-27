@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "comment": "macOS (Apple silicon) pins. On macOS tools/configure.py puts these values into the entries of components.template.json and leaves out every entry that has none here; path and version of an exporter stay the template's. Linux pins bin/lean and bin/lake; here the three programs, the shared libraries that hold their code and libLake.a are pinned. The files are those of lean-4.33.1-darwin_aarch64.tar.zst, the archive of the official release v4.33.1 that elan installs (SHA-256 88c45aad985b5d2a8d925fe10bd1296bd35f66f408480ab182d3facccd065a9d on the release page). The exporter is lean4export v4.33.0 built with this toolchain as docs/getting-started.md says: the same file on two Macs. export_sources: the fingerprints of the sources that export/build-macos.sh builds the native exporter and the closure guard from; export.sh uses a program of config/export-macos.env only if it was built from them.",
+  "lean_toolchains": {
+    "leanprover/lean4:v4.33.1": {
+      "lean_version": "Lean (version 4.33.1, arm64-apple-darwin24.6.0, commit 819816b2e0a3bf405af45ae5c7af2491d8f5bee6, Release)",
+      "sha256": {
+        "bin/lean": "1b370cfcbf44e80d1b004ab1b1ab9a4c73951f9f7c242140bcff9bc577576554",
+        "bin/lake": "58261a1a2fa1a362376c71e02ca854a093e71cc5e6ea64b287a931cb2565273d",
+        "bin/leanc": "28e45515d8e41f9b33b30bbcf90d7ad02beff60948629e22d4783f9da5c33f05",
+        "lib/lean/libLake.a": "eea3a09c6bb9c1ee06a7eec83484459bf6cb9050fd7c658336f5baa7859c97bb",
+        "lib/lean/libInit_shared.dylib": "cb203e0bc0e6ab3250b2804d3e5398ad3a91544b5e049674532f73b7a062ef7f",
+        "lib/lean/libLake_shared.dylib": "e7cae8d015b954e51699703eabc42edfb37812c9af8fe9a44ed8a9eced416357",
+        "lib/lean/libleanshared.dylib": "5a23395d981dbeeba03fc5247acc4a909063e0f0da9ca5a1cc93c8663ec446f8",
+        "lib/lean/libleanshared_1.dylib": "e44858e227323a23ce7416c5678415d2d022582b1627ad3690117ce73cd6345a",
+        "lib/lean/libleanshared_2.dylib": "be68927a4f282b99383e82af4d481b4ffe59f2a243aea20dae0e60b39c2ae182"
+      },
+      "official_lean4export": {
+        "sha256": "e775ccfbe86c08fa9fea1ec1fe45c46ed168cf48236ff8ba429aa28b05c0623e"
+      }
+    },
+    "leanprover/lean4:v4.36.0": {
+      "lean_version": "Lean (version 4.36.0, arm64-apple-darwin24.6.0, commit 611c117bfaf7b7ae1cfcf246ce6fba31e8f509e9, Release)",
+      "sha256": {
+        "bin/lean": "a4c5d3dfc1672faf014e59bd17724035259ff0d22a4ffbdf5a75e142f564817e",
+        "bin/lake": "a0e516de0ba03a26cb90c80f06666022ef9de3f0943f8b26e9b902d229b43ebe",
+        "bin/leanc": "7b92ace817af1e6b1eba01e4284f8b014f1e48e0722c80aefdec24666bf723f2",
+        "lib/lean/libInit_shared.dylib": "4300bc6366c84125bc023412c01bdb5137068e1a1d12a2da372cfae95318facf",
+        "lib/lean/libLake_shared.dylib": "6257a9156bf38ac0135f8c27c28d355a007f37c81bd528d1419bb038af01c70b",
+        "lib/lean/libleanshared.dylib": "9fa4e429820684b59ff37740ca77744a2cd6de70e6e963ef0904760c6921aed5",
+        "lib/lean/libleanshared_1.dylib": "c84c9c6541060c298fed21d11707013c6e7553016982aac9ce1ccc10bee95279",
+        "lib/lean/libleanshared_2.dylib": "d0e4babfb805f778d7ef8dae13fa1bb90d2024cd41aa9a377155741b932b6c1f",
+        "lib/lean/libInit.a": "6b443263a1b00e74584375f2f57739f6701c6f88f24c4ba3e5dc6c6e6f4455c8",
+        "lib/lean/libLake.a": "7408ecfb923bfbce22c41559f791833de2097a1a023f61853e09f9431e702791",
+        "lib/lean/libLeanExport.a": "88f3268c19c6aa0dbf9aa1e35bedb9be037d7cd3f3548d644a3f132361dc0e91",
+        "lib/lean/libLean.a": "c0c0060f42eb46a14b722b324891ea60e5d67f86387cd4de217a478333fca952",
+        "lib/lean/libStd.a": "e04ad2c4c736447c99000fbd41ff7b0881734f71423751968478d1ca9d62646b",
+        "lib/lean/libcadical.a": "00f50320924a78a6b58b75ba583c4b054d6f1b4cd42779b40edb073ffb1ab39f",
+        "lib/lean/libleancpp.a": "430832c5604bf7f3658908b33e6e1ea33b51910536b2ce6d14a8709d308d6e1b",
+        "lib/lean/libleanrt.a": "371ebab8812d56d18a9f06f471f2e1ac99367589ac230df2ef0e09772ab6ec3e",
+        "lib/libc/libSystem.tbd": "607d9993892c95703a0909ff06f5843058ff1ec30b08337f42ab056d9bf325ea",
+        "lib/libc/libc++.dylib": "4f606f50b42c223344d4c49cdb81a247b61c7d61fc50ae75c72593446b9b7cb1",
+        "lib/clang/23/lib/darwin/libclang_rt.osx.a": "8bd1ac1dadee913c7ff01f4dc5f2082bae9c133749942d06533d343a56d801bd",
+        "lib/libcrypto.a": "dc3a5a7931f8fb141118aabe04c06af3ced965d42375f800e884dbe8ed0da520",
+        "lib/libgmp.a": "a41cc2b25b6b7d261aa43b80f9d0674ccfd90a583d74d79fd28bcfa596a816cd",
+        "lib/libssl.a": "a1b63a1e5b9c675481f14b99a72c57b94d26a42ffbe84f751679a74f23179939",
+        "lib/libuv.a": "21b3b3e2ad9072174fb74bab7ab83e5ac1d7ae3cc9518ca940cb274c463bb9ef"
+      },
+      "official_lean4export": {
+        "sha256": "f636fac376b5e32381aa32aa90e4a51e4092176b2a9ad28bc7d7c74d61237897"
+      }
+    }
+  },
+  "export_sources": {
+    "lean4export_native": "ce3bfacf2f718fc88b0b548ed04533ffecbc56eca99a6eb69999bdc6cb573893",
+    "closure_check": "88057666258e95a384bc54c5616b896718f770e3b1d4f62b34512e69d8b6fd72"
+  }
+}

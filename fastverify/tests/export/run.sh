@@ -25,6 +25,10 @@ OFF=${OFF/\$LIGHT_LEAN/$(dirname "$PKG")}   # the template path, resolved as exp
 CFGOFF=$(/usr/bin/python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["lean_toolchains"]["leanprover/lean4:v4.33.1"]["official_lean4export"]["path"])' "$PKG/config/components.json" 2>/dev/null)
 OFF=${FV_OFFICIAL_EXPORTER:-${CFGOFF:-$OFF}}
 NAT=$(/usr/bin/python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["native"]["path"])' "$PKG/export/components.json")
+if [ "$(uname -s)" = Darwin ]; then   # the native exporter that export/build-macos.sh recorded on this machine
+  NAT=$(sed -n 's/^PIN lean4export_native [0-9a-f]* //p' "$PKG/config/export-macos.env" 2>/dev/null)
+  [ -n "$NAT" ] || { echo "SKIP export: no native exporter is recorded (export/build-macos.sh)"; exit 0; }
+fi
 TG="$(cat "$H/targets-rh5.txt")"
 rm -rf "$W"; mkdir -p "$W"; W=$(readlink -f "$W")
 FAIL=0
@@ -33,7 +37,7 @@ build() {  # case dir, then "MOD[:skip]" ...
   local c=$1; shift; local b=$W/$c/build; mkdir -p "$b"; cp "$H/cases/$c"/*.lean "$b/"
   for m in "$@"; do
     local fl=(); [ "${m#*:}" = skip ] && fl=(-Ddebug.skipKernelTC=true); m=${m%%:*}
-    (cd "$b" && env -i PATH=$T33/bin:/usr/bin:/bin "LEAN_PATH=$b:$T33/lib/lean" $T33/bin/lean "${fl[@]}" -o $m.olean $m.lean) > "$W/$c/build.$m.log" 2>&1 || echo "  (build of $c/$m exit $?)" >&2
+    (cd "$b" && env -i PATH=$T33/bin:/usr/bin:/bin "LEAN_PATH=$b:$T33/lib/lean" $T33/bin/lean ${fl[@]+"${fl[@]}"} -o $m.olean $m.lean) > "$W/$c/build.$m.log" 2>&1 || echo "  (build of $c/$m exit $?)" >&2
   done
 }
 official() {  # case roots targets-file -> W/case/off.out, prints exit
@@ -124,6 +128,9 @@ row kitchen-ws decline - "native_exit=$nrc" "(split «» name)" "$r"
 c="space dir"; b="$W/$c/build"; mkdir -p "$b"; cp "$H/cases/githash/G.lean" "$b/"
 (cd "$b" && env -i PATH=$T33/bin:/usr/bin:/bin LEAN_PATH="$b:$T33/lib/lean" $T33/bin/lean -o G.olean G.lean) > /dev/null 2>&1
 echo gThm > "$W/$c/tg"; runcase "space dir" identical G "$W/$c/tg"
+if [ "$(uname -s)" = Darwin ]; then   # a copy of the stage script alone does not run there: tests/export/macos.py
+  echo "SKIP internal-error closure-guard: on macOS the stage script needs lib/macos and config next to its directory"
+else
 # internal error of the stage script (unbound variable under set -u, injected into a private copy): must be exit 2
 # (declined -> E0), never 1 (= the official exporter failed = REJECT)
 sed 's|^T0=$(date +%s.%N)$|T0=$(date +%s.%N); echo "$FV_INJECTED_UNBOUND"|' "$EXS" > "$W/export-injected.sh"; chmod +x "$W/export-injected.sh"
@@ -158,6 +165,7 @@ grc=$("$W/guard/stage/export.sh" --lean-path "$T33/lib/lean" --module Init --tar
 gwhy=$(/usr/bin/python3 -I -c 'import json,sys; print((json.load(open(sys.argv[1]))["native"].get("decline_reason") or "")[:70])' "$W/guard/out.json" 2>/dev/null)
 [ "$grc" = 2 ] && [ ! -e "$W/guard/out" ] && case "$gwhy" in "closure guard:"*) true;; *) false;; esac && r=PASS || r=FAIL
 row closure-guard decline - "stage_exit=$grc" "($gwhy)" "$r"
+fi
 # options: the native-only binary declines (exit 2, nothing usable) on any lean4export option
 orc=$(cd "$W/control/build" && env -i PATH=$T33/bin:/usr/bin:/bin LEAN_PATH=$W/control/build:$T33/lib/lean "$NAT" --export-mdata Init -- Nat.add > "$W/control/opt.out" 2>/dev/null; echo $?)
 [ "$orc" = 2 ] && [ ! -s "$W/control/opt.out" ] && r=PASS || r=FAIL; row options decline - "binary_exit=$orc" "-" "$r"

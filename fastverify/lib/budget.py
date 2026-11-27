@@ -5,6 +5,8 @@
                                           memory.current, cpu.max quota, cpuset.cpus.effective, sched_getaffinity, /proc/meminfo
                                           MemAvailable, /dev/shm free, swap) - not just /proc/meminfo, which shows the HOST's
                                           memory inside a container / cgroup
+                                          On macOS: sysctl and Mach VM figures instead (darwin_memory_estimate), and
+                                          build_jobs, the number of build workers that the available memory carries
   budget.py estimate STAGE BYTES [T]   -> JSON: estimated peak memory (bytes) of STAGE (check | ccmp | pleanchecker | gruszka |
                                           export) for an export of BYTES bytes at T threads, from the measured model below
   budget.py plan BYTES [--mem BYTES] [--cpus N]  -> JSON: recommended threads for the trusted check under a memory budget
@@ -16,6 +18,7 @@ Model (fitted on a 224-thread host, cgroup memory.peak incl. page cache; see fas
   low-memory mode (max of the legs instead of their sum).
 """
 import json, os, sys
+from functools import lru_cache
 
 GiB = 2 ** 30
 
@@ -55,11 +58,59 @@ def _cpuset_count(spec):
             n += 1
     return n
 
+@lru_cache(maxsize=1)
+def _darwin_vm():
+    # mach_host_self() acquires a port reference; one is reused for the scheduler's frequent admission checks
+    import ctypes
+    lib = ctypes.CDLL(None)
+    lib.host_statistics64.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p]
+    return lib, lib.mach_host_self(), os.sysconf("SC_PAGE_SIZE")
+
+def darwin_memory_estimate(words, page_size):
+    """Available memory on macOS, from the uint32 words of one vm_statistics64 sample (mach/vm_statistics.h): the bytes
+    that can be had without compressing or swapping anything, which is what MemAvailable means on Linux.
+      free_count [0] - speculative_count [23]   pages that hold nothing (free_count includes the speculative ones)
+      external_page_count [34]                  file-backed pages, active or not: the cache of files that were read
+                                                or written, given back at once. A cache that a build has just filled
+                                                must not lower the figure
+      purgeable_count [22]                      pages that their owner marked as discardable
+    Anonymous pages are left out, the inactive ones too: they come back only through the compressor or the swap file.
+    So the figure is conservative on purpose. macOS can give more by compressing idle applications, and whether it
+    should is the owner's decision. It is sampled again at every use: at the scheduler's admission of a worker and
+    for build_jobs (host_limits). It is no limit of a running command: the figure moves by gigabytes within minutes."""
+    return (words[0] - words[23] + words[34] + words[22]) * page_size
+
+def darwin_memory_available():
+    import ctypes
+    lib, port, page_size = _darwin_vm()
+    info = (ctypes.c_uint32 * 64)()
+    count = ctypes.c_uint32(len(info))
+    if lib.host_statistics64(port, 4, info, ctypes.byref(count)) or count.value < 35:   # HOST_VM_INFO64
+        raise OSError("host_statistics64(HOST_VM_INFO64) failed")
+    return darwin_memory_estimate(info, page_size)
+
+def _darwin_sysctl(name):
+    import ctypes
+    data = ctypes.create_string_buffer(8)   # hw.ncpu and hw.memsize are native 32- or 64-bit scalars
+    size = ctypes.c_size_t(len(data))
+    if ctypes.CDLL(None).sysctlbyname(name.encode(), data, ctypes.byref(size), None, ctypes.c_size_t(0)):
+        return None
+    return int.from_bytes(data.raw[:size.value], sys.byteorder)
+
 def host_limits():
     """Effective limits for this process: the minimum over the cgroup chain (every ancestor's memory.max / cpu.max applies)."""
     out = {"cgroup": _cgroup_dir(), "memory_max": None, "memory_high": None, "memory_current": None, "memory_peak": None,
            "swap_max": None, "cpu_quota": None, "cpuset_cpus": None, "cpus_effective": None, "affinity_cpus": None,
            "mem_available": None, "mem_total": None, "shm_free": None, "limited_by": {}}
+    if sys.platform == "darwin":   # no cgroup and no /proc: the machine's own figures
+        cpus = _darwin_sysctl("hw.ncpu") or os.cpu_count() or 1
+        memory = _darwin_sysctl("hw.memsize")
+        available = darwin_memory_available()
+        reserve = min(4 * GiB, memory // 8) if memory else 4 * GiB   # headroom for macOS itself
+        # build_jobs: the workers of 2 GiB each that fit into the available memory after the reserve, at most one a CPU
+        out.update(cpus_effective=cpus, cpu_budget=cpus, mem_total=memory, mem_available=available,
+                   memory_budget=available, build_jobs=max(1, min(cpus, (available - reserve) // (2 * GiB))))
+        return out
     d = out["cgroup"]
     while d and d.startswith("/sys/fs/cgroup"):
         mm = _num(_read(os.path.join(d, "memory.max")))

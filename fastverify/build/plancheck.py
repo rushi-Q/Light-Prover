@@ -83,7 +83,9 @@ def main():
         with open("/proc/sys/vm/max_map_count") as f:
             mmc = int(f.read().split()[0])
     except (OSError, ValueError, IndexError):
-        die("cannot read /proc/sys/vm/max_map_count")
+        if sys.platform != "darwin":   # macOS has no such limit
+            die("cannot read /proc/sys/vm/max_map_count")
+        mmc = float("inf")
     if mmc < own + 65536:
         die(f"host limit: vm.max_map_count {mmc} < {own} project olean parts + 65536 (lean must map every imported "
             "part; the official build fails on this host too)")

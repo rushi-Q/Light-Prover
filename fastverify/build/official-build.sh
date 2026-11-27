@@ -18,6 +18,11 @@
 set -u
 D=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 PY=/usr/bin/python3
+# macOS: a sandbox profile, links and the guard stand in for bwrap, bind mounts and timeout (lib/macos/stage.sh)
+STAGE_OS=; [ -x /usr/bin/uname ] && STAGE_OS=$(/usr/bin/uname -s)
+if [ "$STAGE_OS" = Darwin ]; then
+  STAGE_PID=$$ STAGE_WALL=0; export D PY STAGE_OS STAGE_PID STAGE_WALL; . "$D/lib/macos/stage.sh" || exit 2
+fi
 
 bindok() { # bindok SRC DST PROJ: a binds.tsv line this script may act on: plain absolute paths (no
   # control character, no empty/'.'/'..' component), DST strictly inside PROJ (lib/manifest.py's dependency binds)
@@ -35,6 +40,7 @@ bindok() { # bindok SRC DST PROJ: a binds.tsv line this script may act on: plain
 mkbinds() { # mkbinds BINDFILE PROJ: create the bind destinations ONCE, before any untrusted code runs: never
   # through a symlink (realpath = the path itself, before and after), never outside PROJ (bindok)
   local src dst
+  if [ "$STAGE_OS" = Darwin ]; then macos_deps "$1" "$2"; return; fi   # no bind mounts: links, by the same rule
   while IFS=$'\t' read -r src dst; do
     [ -n "$src" ] || continue
     bindok "$src" "$dst" "$2" || return 2
@@ -46,6 +52,10 @@ mkbinds() { # mkbinds BINDFILE PROJ: create the bind destinations ONCE, before a
 
 sandbox() { # sandbox PROJ TC BINDFILE CMD... (stdout/stderr passed through)
   local proj=$1 tc=$2 binds=$3; shift 3
+  if [ "${STAGE_OS:-}" = Darwin ]; then   # no bwrap: a sandbox profile with the same grants (lib/macos/stage.sh)
+    . "$D/lib/macos/stage.sh" || return 126
+    macos_sandbox "$proj" "$tc" "$binds" "" "${THREADS:-}" "$@"; return
+  fi
   local args=(--ro-bind / / --tmpfs /home --tmpfs /root --tmpfs /tmp --dir /tmp/home
               --tmpfs /run --tmpfs /var --dev /dev --proc /proc --clearenv)
   # every other top-level directory except the system ones is hidden too (/scratch, /data, /mnt, /opt,
@@ -109,6 +119,8 @@ if [ "${1:-}" = --preflight ]; then preflight "${2:?toolchain prefix}"; exit $?;
 
 [ $# -ge 3 ] || { sed -n 2,4p "$0" >&2; exit 2; }
 PROJ=$(readlink -f "$1"); WS=$2; TC=$(readlink -f "$3"); shift 3
+# macOS: the workspace as spelled on disk (a volume may ignore letter case, and Lake prints the disk's spelling)
+[ "$STAGE_OS" != Darwin ] || WS=$(readlink -f "$WS" 2>/dev/null || printf %s "$WS")
 JSON=; LPOUT=; LOG=; TIMEOUT=0; THREADS=; TARGETS=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -193,10 +205,20 @@ if [ ${#TARGETS[@]} -gt 0 ]; then
 fi
 
 TO=(); [ "$TIMEOUT" != 0 ] && TO=(timeout --signal=KILL "$TIMEOUT")
+[ "$STAGE_OS" != Darwin ] || TO=(/usr/bin/env "STAGE_WALL=$TIMEOUT")   # the sandbox's guard enforces it
 "${TO[@]}" bash -c "$(declare -f sandbox bindok); sandbox \"\$@\"" _ "$PROJ" "$TC" "$LOG/binds.tsv" "$TC/bin/lake" build ${TARGETS[@]+"${TARGETS[@]}"} >> "$LOG/build.log" 2>&1
 rc=$?
 if [ $rc -ne 0 ]; then
   if [ $rc -ge 124 ]; then emit ERROR 2 "lake build killed/timed out (exit $rc)"; exit 2; fi
+  # macOS: `lake build` exits 1 when the build fails; any other status is the sandbox's or the guard's. And the
+  # sandbox refuses (EPERM, EACCES) what the Linux sandbox hides, holds in a tmpfs or mounts read-only, so a build
+  # whose log carries such a refusal, in any line (the rule of build/sched.py), has not failed by itself. Both: no
+  # verdict (fail closed), never REJECTED
+  if [ "$STAGE_OS" = Darwin ]; then
+    [ $rc -eq 1 ] || { emit ERROR 2 "lake build could not run (exit $rc)"; exit 2; }
+    denied=$(grep -m1 -E "[Oo]peration not permitted|[Pp]ermission denied" "$LOG/build.log" | cut -c1-200)
+    [ -z "$denied" ] || { emit ERROR 2 "lake build exit $rc: the sandbox refused an access: $denied"; exit 2; }
+  fi
   # a host resource failure is not the project's failure: no verdict (fail closed), never REJECTED
   if grep -qE "No space left on device|Cannot allocate memory|Resource temporarily unavailable|failed to create thread|Too many open files|mmap.*failed|out of memory|Stale file handle|failed to read file '" "$LOG/build.log"; then
     emit ERROR 2 "lake build exit $rc with a host resource error: $(grep -m2 -E "No space left on device|Cannot allocate memory|Resource temporarily unavailable|failed to create thread|Too many open files|mmap.*failed|out of memory|Stale file handle|failed to read file '" "$LOG/build.log" | tr '\n' ' ' | cut -c1-300)"; exit 2
@@ -230,6 +252,10 @@ if [ -n "$LPOUT" ]; then
     || { emit ERROR 2 "lake env failed after a successful build"; exit 2; }
   # LEAN_PATH is computed from the UNTRUSTED lakefile; the export stage acts on its directories on the
   # host -> every entry must be a plain path inside PROJ (or TC/lib/lean), else no verdict
+  if [ "$STAGE_OS" = Darwin ]; then   # a dependency is a link there, not a mount: the rule of lib/macos/stage.sh
+    macos_lpconfined "$LOG/lean_path.txt" "$PROJ" "$TC" "$LOG/binds.tsv" 2>> "$LOG/build.log" \
+      || { emit ERROR 2 "LEAN_PATH after the build leaves the project (see $LOG/build.log)"; exit 2; }
+  else
   "$PY" -I -c '
 import os, sys
 lp, proj, tc = open(sys.argv[1]).read().strip(), sys.argv[2], sys.argv[3]
@@ -242,6 +268,7 @@ for e in lp.split(":"):
     if not n.startswith(proj + os.sep) or os.path.realpath(n) != n:
         sys.exit("LEAN_PATH entry outside the project %s (or through a symlink): %r" % (proj, e))' "$LOG/lean_path.txt" "$PROJ" "$TC" 2>> "$LOG/build.log" \
     || { emit ERROR 2 "LEAN_PATH after the build leaves the project (see $LOG/build.log)"; exit 2; }
+  fi
   tr -d '\n' < "$LOG/lean_path.txt" > "$LPOUT"
 fi
 emit BUILT 0 "lake build ok"

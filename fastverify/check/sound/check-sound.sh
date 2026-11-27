@@ -99,6 +99,12 @@ if ! q01_env_clean; then
   exec /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 /bin/bash -p "$(/usr/bin/readlink -f "$0")" --clean-env-reexec "$@"
 fi
 if [ "${1:-}" = --clean-env-reexec ]; then shift; fi
+# macOS: this judge runs three programs at once and needs ccmp, which has no macOS build in this version. The two
+# low-memory judges run there natively (check/sound/macos/README.md).
+if [ "$(/usr/bin/uname -s 2>/dev/null)" = Darwin ]; then
+  printf '%s\n' '{"checker":"checkSound","verdict":"DECLINED","exit":2,"reason":"not available on macOS: use check/lowmem/check-sound-lowmem.sh or check/lowmem/check-sound-ultralowmem.sh"}'
+  exit 2
+fi
 set -u
 umask 077
 T_START=$(date +%s.%N)

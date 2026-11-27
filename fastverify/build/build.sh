@@ -43,6 +43,11 @@
 set -u
 D=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
 PY=/usr/bin/python3
+# macOS: a sandbox profile, links and the guard stand in for bwrap, bind mounts and timeout (lib/macos/stage.sh)
+STAGE_OS=; [ -x /usr/bin/uname ] && STAGE_OS=$(/usr/bin/uname -s)
+if [ "$STAGE_OS" = Darwin ]; then
+  STAGE_PID=$$ STAGE_WALL=0; export D PY STAGE_OS STAGE_PID STAGE_WALL; . "$D/lib/macos/stage.sh" || exit 2
+fi
 
 bindok() { # bindok SRC DST PROJ: a binds.tsv line this script may act on: plain absolute paths (no
   # control character, no empty/'.'/'..' component); DST strictly inside PROJ (dependency packages, lib/manifest.py) or
@@ -62,6 +67,7 @@ bindok() { # bindok SRC DST PROJ: a binds.tsv line this script may act on: plain
 mkbinds() { # mkbinds BINDFILE PROJ: create the dependency bind destinations ONCE, before any untrusted code runs:
   # never through a symlink (realpath = the path itself, before and after), never outside PROJ (bindok)
   local src dst
+  if [ "$STAGE_OS" = Darwin ]; then macos_deps "$1" "$2"; return; fi   # no bind mounts: links, by the same rule
   while IFS=$'\t' read -r src dst; do
     [ -n "$src" ] || continue
     bindok "$src" "$dst" "$2" || return 2
@@ -74,6 +80,10 @@ mkbinds() { # mkbinds BINDFILE PROJ: create the dependency bind destinations ONC
 
 sandbox() { # sandbox PROJ TC BINDFILE LOGDIR CMD...  (= official-build.sh sandbox [+ --bind LOGDIR if LOGDIR != ""])
   local proj=$1 tc=$2 binds=$3 logd=$4; shift 4
+  if [ "${STAGE_OS:-}" = Darwin ]; then   # no bwrap: a sandbox profile with the same grants (lib/macos/stage.sh)
+    . "$D/lib/macos/stage.sh" || return 126
+    macos_sandbox "$proj" "$tc" "$binds" "$logd" "" "$@"; return
+  fi
   local args=(--ro-bind / / --tmpfs /home --tmpfs /root --tmpfs /tmp --dir /tmp/home
               --tmpfs /run --tmpfs /var --dev /dev --proc /proc --clearenv)
   # every other top-level directory except the system ones is hidden too (/scratch, /data, /mnt, /opt,
@@ -122,6 +132,7 @@ print(n)' "$1" "$2"
 lpconfined() { # lpconfined FILE PROJ TC: every LEAN_PATH entry in FILE (computed from the UNTRUSTED lakefile) is a plain path
   # strictly inside PROJ (root lib dir, dependency packages bound under PROJ) or TC/lib/lean: the export stage acts on these
   # directories on the host (export/export.sh sizes the .olean files)
+  if [ "$STAGE_OS" = Darwin ]; then macos_lpconfined "$1" "$2" "$3" "$LOG/binds.tsv"; return; fi   # links, not mounts
   "$PY" -I -c '
 import os, sys
 lp, proj, tc = open(sys.argv[1]).read().strip(), sys.argv[2], sys.argv[3]
@@ -177,6 +188,8 @@ proj, names, binds = os.path.realpath(sys.argv[1]), [sys.argv[2]], sys.argv[3]  
 IDENT = r"[A-Za-z_][A-Za-z0-9_\x27]*(?:\.[A-Za-z_][A-Za-z0-9_\x27]*)*"   # plain ASCII components: toName.toString = itself
 def bad(why):
     print("DECLINE: " + why); sys.exit(0)
+if sys.platform == "darwin":   # the read below needs O_PATH and /proc
+    bad("--require-modules is not available on macOS")
 try:
     pfd = os.open(os.path.join(proj, "lakefile.toml"), os.O_PATH | os.O_CLOEXEC)
     if not stat.S_ISREG(os.fstat(pfd).st_mode) or not os.readlink(f"/proc/self/fd/{pfd}").startswith(proj + "/"):
@@ -439,6 +452,8 @@ main() {
 
   [ $# -ge 3 ] || { sed -n 2,4p "$0" >&2; exit 2; }
   PROJ=$(readlink -f "$1"); WS=$2; TC=$(readlink -f "$3"); shift 3
+  # macOS: the workspace as spelled on disk (a volume may ignore letter case, and Lake prints the disk's spelling)
+  [ "$STAGE_OS" != Darwin ] || WS=$(readlink -f "$WS" 2>/dev/null || printf %s "$WS")
   REQMODS=; CLOSURE=; BCACHE=; MLATE=0; MLPID=; JSON=; LPOUT=; LOG=; TIMEOUT=0; THREADS=$(nproc); PLANONLY=0; PRESET=B1; UNSAFE=; NATIVE=0; POFF=0; SFP=0; MERGE=0; MERGE_ARGS=; FASTEXACT=0; ZYGOTE=0
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -471,6 +486,7 @@ main() {
     echo "build.sh: --build-cache $BCACHE is not a private directory of this user: no cache" >&2; BCACHE=
   fi
   SCHED_OPTS=(${CGOPTS[@]+"${CGOPTS[@]}"}); PLANNER_ARGS=()
+  [ "$STAGE_OS" != Darwin ] || SCHED_OPTS+=(--macos-budget "$D/lib/budget.py")   # memory figures without /proc
   # (D22/A03) githash of the project's official toolchain, needed early: an unofficial toolchain (toolchain-T1) is a build of
   # ONE release and can only build projects of that release (its .olean files carry its githash)
   GH=$(env -i "$TC/bin/lean" --githash 2>/dev/null) || GH=
@@ -751,7 +767,7 @@ for dp, dns, fns in os.walk(proj, followlinks=True):   # every other lake-manife
   # private directory; the plan is copied out as a regular file (O_NOFOLLOW) after the sandbox (own pid ns) is gone
   PQ=$LOG/planq; rm -rf "$PQ"; mkdir "$PQ" || decline "cannot create $PQ"
   { cat "$LOG/binds.tsv"; printf '%s\t%s\n' "$LOG" "$LOG"; } > "$LOG/binds-ro.tsv" || decline "cannot write binds-ro.tsv"
-  sandbox "$PROJ" "$TC" "$LOG/binds-ro.tsv" "$PQ" "$LOG/planner/planner" "$TC" "$PQ/plan.jsonl" "${PLANNER_ARGS[@]}" > "$LOG/plan.out" 2> "$LOG/plan.err"
+  sandbox "$PROJ" "$TC" "$LOG/binds-ro.tsv" "$PQ" "$LOG/planner/planner" "$TC" "$PQ/plan.jsonl" ${PLANNER_ARGS[@]+"${PLANNER_ARGS[@]}"} > "$LOG/plan.out" 2> "$LOG/plan.err"
   prc=$?
   if [ $prc -eq 0 ]; then
     copy_out "$PQ/plan.jsonl" "$LOG/plan.jsonl" || decline "the planner's plan is not a regular file"
@@ -795,6 +811,7 @@ print(" ".join(m for m in sys.argv[2].split() if m not in names))' "$LOG/plan.js
   wait "$SDPID" || decline "cannot digest the project sources"
   fi
   TO=(); [ "$TIMEOUT" != 0 ] && TO=(timeout --signal=KILL "$TIMEOUT")
+  [ "$STAGE_OS" != Darwin ] || TO=(/usr/bin/env "STAGE_WALL=$TIMEOUT")   # the sandbox's guard enforces it
   # 3. dependency packages up to date by Lake's own check (concurrently with the build)
   DPID=
   if [ -s "$LOG/extmods.txt" ]; then
@@ -824,10 +841,10 @@ print(" ".join(m for m in sys.argv[2].split() if m not in names))' "$LOG/plan.js
     IFS=: read -r -a MA <<< "$MERGE_ARGS"
     # measured deny list (S02): groups that failed merged in earlier runs of the same project are not merged
     # (merge=--no-deny disables it; an explicit merge=--deny:FILE replaces it); snapshot in the log dir
-    if [ -f "$D/build/hints/merge-deny.txt" ] && ! printf '%s\n' "${MA[@]}" | grep -qx -e '--deny' -e '--no-deny'; then
+    if [ -f "$D/build/hints/merge-deny.txt" ] && ! printf '%s\n' ${MA[@]+"${MA[@]}"} | grep -qx -e '--deny' -e '--no-deny'; then
       cp "$D/build/hints/merge-deny.txt" "$LOG/merge-deny.txt" && MA+=(--deny "$LOG/merge-deny.txt")
     fi
-    MA2=(); for x in "${MA[@]}"; do if [ "$x" = late ]; then MLATE=1; else MA2+=("$x"); fi; done; MA=("${MA2[@]}")
+    MA2=(); for x in ${MA[@]+"${MA[@]}"}; do if [ "$x" = late ]; then MLATE=1; else MA2+=("$x"); fi; done; MA=(${MA2[@]+"${MA2[@]}"})
     [ -n "$MPS" ] && wait "$MPS"
     if [ "$MLATE" = 1 ]; then
       # merge=late (S02): the build starts at once with Lake's plan; the merge planner runs concurrently and sched.py
@@ -836,9 +853,9 @@ print(" ".join(m for m in sys.argv[2].split() if m not in names))' "$LOG/plan.js
       [ "$BUILDBINDS" = "$LOG/binds-build.tsv" ] || { cp "$LOG/binds.tsv" "$LOG/binds-build.tsv"; BUILDBINDS=$LOG/binds-build.tsv; }
       printf '%s\t%s\n' "$LOG/merge" "$LOG/merge" >> "$BUILDBINDS"
       SCHED_OPTS+=(--merge-late "$LOG/merge")
-      ( if "$PY" -I "$LOG/src/mergeplan.py" "$LOG/plan.jsonl" "$LOG/merge" --jobs "$MJ" --confine "$PROJ" --scan-cache "$LOG/merge-prescan.pkl" "${MA[@]}" > "$LOG/merge.out" 2>&1
+      ( if "$PY" -I "$LOG/src/mergeplan.py" "$LOG/plan.jsonl" "$LOG/merge" --jobs "$MJ" --confine "$PROJ" --scan-cache "$LOG/merge-prescan.pkl" ${MA[@]+"${MA[@]}"} > "$LOG/merge.out" 2>&1
         then : > "$LOG/merge/READY"; else : > "$LOG/merge/FAILED"; echo "merge planner failed (building unmerged): $(tail -1 "$LOG/merge.out")" >> "$LOG/build.log"; fi ) & MLPID=$!
-    elif "$PY" -I "$LOG/src/mergeplan.py" "$LOG/plan.jsonl" "$LOG/merge" --jobs "$MJ" --confine "$PROJ" --scan-cache "$LOG/merge-prescan.pkl" "${MA[@]}" > "$LOG/merge.out" 2>&1; then
+    elif "$PY" -I "$LOG/src/mergeplan.py" "$LOG/plan.jsonl" "$LOG/merge" --jobs "$MJ" --confine "$PROJ" --scan-cache "$LOG/merge-prescan.pkl" ${MA[@]+"${MA[@]}"} > "$LOG/merge.out" 2>&1; then
       PLANF=$LOG/merge/plan.jsonl
       [ "$BUILDBINDS" = "$LOG/binds-build.tsv" ] || { cp "$LOG/binds.tsv" "$LOG/binds-build.tsv"; BUILDBINDS=$LOG/binds-build.tsv; }
       printf '%s\t%s\n' "$LOG/merge" "$LOG/merge" >> "$BUILDBINDS"
@@ -874,6 +891,10 @@ print(" ".join(m for m in sys.argv[2].split() if m not in names))' "$LOG/plan.js
     # = the normalized path) before this host-side mkdir/cp acts on it (no untrusted code runs at this point)
     ROOTLIB=$(confined_path "$("$PY" -I -c 'import json,sys; h=json.loads(open(sys.argv[1]).readline()); print([p["leanLibDir"] for p in h["packages"] if p.get("isRoot")][0])' "$LOG/plan.jsonl")" "$PROJ") \
       || decline "premise-off: the root lib dir of the plan is not a plain directory inside the project"
+    # macOS: a link that leads nowhere does not exist for the test below, and BSD cp writes through it, to wherever
+    # the project made it lead (GNU cp refuses to)
+    [ "$STAGE_OS" != Darwin ] || [ ! -L "$ROOTLIB/FastverifyPremiseOff.olean" ] \
+      || decline "premise-off: $ROOTLIB/FastverifyPremiseOff.olean is a symbolic link"
     [ -e "$ROOTLIB/FastverifyPremiseOff.olean" ] && decline "premise-off: $ROOTLIB/FastverifyPremiseOff.olean exists"
     mkdir -p -- "$ROOTLIB" && [ "$(realpath -e -- "$ROOTLIB")" = "$ROOTLIB" ] && cp -- "$LOG/premiseoff/FastverifyPremiseOff.olean" "$ROOTLIB/" \
       || decline "premise-off: cannot place the helper olean"

@@ -24,10 +24,24 @@ if $PY -I "$BP" host > "$T/host.json" 2>"$T/host.err" && $PY -I - "$T/host.json"
 import json, os, sys
 h = json.load(open(sys.argv[1]))
 assert h["mem_available"] is None or h["memory_budget"] <= h["mem_available"], "budget > MemAvailable"
-assert h["cpu_budget"] <= len(os.sched_getaffinity(0)), "cpu_budget > affinity"
+cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count()   # macOS has no affinity
+assert h["cpu_budget"] <= cpus, "cpu_budget > affinity"
 assert "cgroup" in h and "limited_by" in h
 PY
 then ok "budget.py host"; else bad "budget.py host" "$(cat "$T/host.err" | tail -2)"; fi
+# macOS: the available memory is the free, file-backed and purgeable pages; a sample of a 64 GB Mac after a build
+# (16 KiB pages: free 1190134 with 20972 speculative, inactive 867041, purgeable 135004, file-backed 564265)
+if [ "$(uname -s)" = Darwin ]; then
+  if $PY -I - "$T/host.json" "$BP" <<'PY'
+import json, runpy, sys
+h = json.load(open(sys.argv[1]))
+assert 0 < h["mem_available"] <= h["mem_total"] and h["memory_budget"] == h["mem_available"], h
+words = [0] * 38
+words[0], words[2], words[22], words[23], words[34] = 1190134, 867041, 135004, 20972, 564265
+assert runpy.run_path(sys.argv[2])["darwin_memory_estimate"](words, 16384) == 30612373504   # 28.51 GiB
+PY
+  then ok "budget.py host on macOS: available memory"; else bad "budget.py host on macOS" "see above"; fi
+fi
 
 # 2. estimate / plan
 if $PY -I - "$BP" <<'PY'

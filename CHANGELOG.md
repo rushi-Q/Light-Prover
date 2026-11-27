@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- macOS on Apple silicon: the build stage (B0 to B3), the export stage (E0, E1) and the low-memory and
+  ultra-low-memory judges run natively, as separate stage scripts ([docs/macos.md](docs/macos.md)). A sandbox profile
+  that denies by default (`lib/macos/sandbox-run.py`) and a macOS backend of the resource guard stand in for
+  bubblewrap, cgroups and `timeout`. The judge's four programs are built on the Mac by
+  `check/sound/macos/build-judge-macos.sh` from the sources the Linux recipes use, and run only with the bytes the
+  tree pins. Not on macOS: the orchestrator and the services, the standard sound judge `check-sound.sh`, the
+  notary and frontier judges, `toolchain-T1`, the zygote items, `native-pkg`, the low-memory exporter.
+
 ## v0.1.0 (first release)
 
 Light-Prover checks a Lean 4 project against a pinned challenge with the official comparator's statement and axiom

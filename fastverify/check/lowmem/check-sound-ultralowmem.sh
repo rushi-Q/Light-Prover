@@ -37,6 +37,13 @@ if ! q01_env_clean; then
   exec /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 /bin/bash -p "$(/usr/bin/readlink -f "$0")" --clean-env-reexec "$@"
 fi
 if [ "${1:-}" = --clean-env-reexec ]; then shift; fi
+# macOS: the legs of this script run natively, one after another: check/sound/macos/enter.py publishes the result of
+# the driver judge.py, which performs every later step of this script itself (README.md there). It is entered only
+# from the clean environment established above. Everything below is for Linux.
+if [ "$(/usr/bin/uname -s 2>/dev/null)" = Darwin ]; then
+  self=$(/usr/bin/readlink -f "$0") && [ -n "$self" ] && t=$(/usr/bin/python3 -I -c 'import atexit, os, sys; names = {"__name__": "enter", "__file__": sys.argv[1]}; atexit.register(os._exit, 1); exec(compile(open(sys.argv[1], "rb").read(), sys.argv[1], "exec"), names); done = names.get("COMPLETE") is True; print("COMPLETE" if done else "INCOMPLETE", flush=True); os._exit(0 if done else 1)' "${self%/*}/../sound/macos/enter.py") && [ "$t" = COMPLETE ] || { printf '%s\n' '{"checker":"checkSoundUltraLowMem","verdict":"DECLINED","exit":2,"reason":"cannot resolve the path of the judge script, start /usr/bin/python3 or load check/sound/macos/enter.py to its last statement"}'; exit 2; }
+  exec /usr/bin/python3 -I "${self%/*}/../sound/macos/enter.py" ultralowmem "$@"
+fi
 set -u
 umask 077
 T_START=$(date +%s.%N)

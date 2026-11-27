@@ -41,6 +41,13 @@ def read_source(path):
         raise OSError(f'source {path!r} outside the project')
     # (r2, review L4) an O_PATH descriptor first (opens nothing: a FIFO / device is never opened for reading), checked to be
     # a regular file inside the project, then re-opened for reading through that very descriptor (race-free)
+    if sys.platform == 'darwin':   # neither O_PATH nor /proc: opened without blocking (a FIFO returns at once) and with
+        # O_NOFOLLOW_ANY, which follows no link in any part of the path: what is opened is the file inside the project
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOCTTY | os.O_CLOEXEC | 0x20000000)
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            os.close(fd); raise OSError(f'source {path!r} is not a regular file')
+        with open(fd, encoding='utf-8') as f:
+            return f.read()
     pfd = os.open(path, os.O_PATH | os.O_CLOEXEC)
     try:
         if not stat.S_ISREG(os.fstat(pfd).st_mode):
@@ -288,6 +295,8 @@ def prescan(root, outp, jobs):
 def main():
     a = sys.argv[1:]
     global CONFINE
+    if sys.platform == 'darwin':   # the pools below rely on fork (workers inherit this process's state)
+        import multiprocessing; multiprocessing.set_start_method('fork')
     if len(a) >= 3 and a[0] == '--prescan':
         CONFINE = os.path.realpath(a[1])   # the prescan reads only files that are inside the scanned project
         return prescan(a[1], a[2], int(a[a.index('--jobs') + 1]) if '--jobs' in a else 16)
@@ -341,6 +350,9 @@ def main():
     for n, ds in deps.items():
         for d in ds: rd[d].append(n)
     indeg = {n: len(deps[n]) for n in names}; q = [n for n in names if indeg[n] == 0]; order = []
+    if sys.platform == 'darwin':   # APFS lists a directory in hash order: Lake's discovery order is arbitrary there.
+        q.sort()                   # Sorted, ties of the greedy grouping break the same way on every checkout
+        for importers in rd.values(): importers.sort()
     while q:
         n = q.pop(); order.append(n)
         for r in rd[n]:
