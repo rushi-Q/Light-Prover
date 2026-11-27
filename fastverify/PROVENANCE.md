@@ -26,6 +26,7 @@ start and at the end of every run.
 |---|---|---|
 | sound judge, Lean 4.36 (default) and Lean 4.37.0-rc1 | `check/sound/pins.env`, `check/sound/pins-437.env` | [check/sound/README.md](check/sound/README.md) |
 | low-memory judge (4.36, 4.37.0-rc1) and ultra-low-memory judge | `check/lowmem/pins.env`, `pins-437.env`, `pins-ultralowmem.env` | [check/lowmem/README.md](check/lowmem/README.md) |
+| low-memory and ultra-low-memory judge (4.36) on arm64 macOS | `check/sound/macos/pins.env` | [check/sound/macos/README.md](check/sound/macos/README.md) |
 | notary judge (EXPERIMENTAL in v0.1) | `check/notary/pins.env` | [check/notary/README.md](check/notary/README.md) |
 | conditional verdicts (frontier preparer) | `check/frontier/pins.env` | [check/frontier/README.md](check/frontier/README.md) |
 | cross-version gate (no binary) | `check/xversion/releases.json` | [check/xversion/README.md](check/xversion/README.md) |
@@ -37,6 +38,21 @@ Byte-identical rebuilds: every release-library Lean binary and every `gruszka` b
 repository. The 4.36 PGO kernel libraries of `pleanchecker` / `pleanchecker_incr` need a 4.1 GB build bundle (compiler,
 sysroot, headers, PGO profile) that is not shipped (see below); without it, build the release-library variant and pin
 its sha256 yourself. The rebuild-and-compare scripts are in `tools/reproduce/`.
+
+The macOS judge runs four programs that are compiled on the Mac, from the sources of the Linux recipes with no file
+changed for macOS: `ccmp-lowmem` (eight names of `check/sound/src` and five of `check/lowmem/src`), `pleanchecker`
+(`check/sound/src`), `pleanchecker-lowmem` (`check/lowmem/src-ultralowmem/src/pleanchecker-lowmem`) and `gruszka`
+(`sources/gruszka` with `check/checkB/patches/gruszka-combined-v6.diff`, Rust 1.97.1 and the 31 crates of its
+`Cargo.lock`). The three Lean programs are linked from the unmodified libraries of the official Lean 4.36.0 release for
+arm64 macOS, so the official kernel is not compiled there; the C code is compiled, and all four programs are linked, by
+the clang and the lld of that toolchain. `check/sound/macos/pins.env` pins the sha256 of each program and the
+fingerprint of its sources, and a run compares the three programs of its script and the self-test inputs with these pins
+before its first leg and after its last. Where the programs are is not pinned: the record of the machine
+(`config/pins-macos.env`, not tracked) names their paths. `check/sound/macos/build-judge-macos.sh OUTDIR` rebuilds all
+four and stops unless they have the pinned bytes. They were rebuilt byte for byte on two Macs with macOS 27.2.1, an M4
+with the Command Line Tools and an M5 Pro with Xcode: the Lean programs in nine builds and `gruszka` in seven, in
+different folders, with one, two and four build jobs and with the toolchain installed at another place. A Mac with
+another macOS release was not measured.
 
 ### Build bundle for the PGO kernel libraries
 
