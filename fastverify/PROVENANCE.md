@@ -57,6 +57,8 @@ with offline `rustup/` and `cargo/` copies; the docker-based scripts need docker
 | low-memory exporter, Lean 4.33.1 | `a86e719879d88f189b6e58001deb0411426dedabcee6b4318883ba6b4caaecba` | the native exporter plus an output-neutral memory patch (`export/README.md`) |
 | low-memory exporter, Lean 4.37.0-rc1 | `9c4ae13d05feb8028f250d78ca39692ffefdc10fbf19383ef036f0faaa770f1e` | the 4.37 exporter plus the memory patch (`export/README.md`) |
 | official exporter `lean4export` v4.33.0 | `805ab4cc6a88dcef109644d201c3142261f524aecaf58b04913a9f029e21e9b5` | the official repository at v4.33.0, built with the official Lake 4.33.1 (getting started, section 3) |
+| native exporter E1 and closure guard, macOS (Apple silicon, Lean 4.33.1) | none in the tree: the system's C++ compiler builds the guard and the exporter's C++ core, so they are not the same bytes on every Mac. `config/components.macos.json` pins the fingerprints of their sources (`export_sources`); the recipe writes the sha256 of what it built into `config/export-macos.env` on that Mac | `export/build-macos.sh`: `sources/lean4export-native` with `export/native-exporter-macos.patch`, built with the official Lake 4.33.1, and `export/closure/closure_check.cpp` (`c++ -O2 -std=c++17 -pthread`) (`export/README.md`) |
+| official exporter `lean4export` v4.33.0, macOS | `e775ccfbe86c08fa9fea1ec1fe45c46ed168cf48236ff8ba429aa28b05c0623e` (`config/components.macos.json`; `tools/configure.py` writes it into the machine's `config/components.json`) | the official repository at v4.33.0, built on the Mac with the official Lake 4.33.1 |
 
 ## 4. Build toolchains (untrusted, `--preset sound` only)
 

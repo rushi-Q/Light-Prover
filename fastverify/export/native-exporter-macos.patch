@@ -1,0 +1,139 @@
+--- a/native/fast_export.cpp
++++ b/native/fast_export.cpp
+@@ -41,6 +41,22 @@
+ #include <time.h>
+ #include <unistd.h>
+ 
++#ifdef __APPLE__  // macOS (Apple silicon): the Linux names that the code below only needs to compile
++#undef HUGE                        // a <math.h> macro there, a constant of osink.h
++#define O_DIRECT 0                 // the MAP and DIO back ends reopen /proc/self/fd/1: without it the sink uses WRITE
++#define SCHED_IDLE SCHED_OTHER     // (MAP back end)
++#define MAP_POPULATE 0             // no such hint
++#define RUSAGE_THREAD RUSAGE_SELF  // log only: the "thread" figure is the process's there
++static int lean4export_fallocate(int, int, off_t, off_t) { return -1; }  // (MAP back end)
++static int lean4export_pipe2(int fd[2], int) {  // with O_CLOEXEC, before any thread or child exists
++    return pipe(fd) == 0 && fcntl(fd[0], F_SETFD, FD_CLOEXEC) == 0 && fcntl(fd[1], F_SETFD, FD_CLOEXEC) == 0 ? 0 : -1;
++}
++// Under names of their own: an SDK may declare these functions (the SDK of macOS 27 declares pipe2), and the
++// program is the same whichever SDK it was built with
++#define fallocate lean4export_fallocate
++#define pipe2 lean4export_pipe2
++#endif
++
+ #include "osink.h"  // ordered output sink
+ 
+ namespace lean4export_native {
+@@ -1391,6 +1407,7 @@
+     return nullptr;
+ }
+ static void fast_teardown(size_t nthreads) {
++#ifndef __APPLE__  // macOS: MADV_DONTNEED frees nothing there, and the kernel releases the pages at exit
+     const char* e = getenv("LEAN4EXPORT_TEARDOWN");
+     if ((e && strcmp(e, "0") == 0) || nthreads < 2) return;
+     double t0 = now_s();
+@@ -1480,6 +1497,7 @@
+     for (size_t i = 0; i < started; i++) pthread_join(ths[i], nullptr);
+     logf("teardown: %s", std::to_string(k) + " chunks of " + std::to_string(regs.size()) + " mappings released in " +
+                              std::to_string((int)((now_s() - t0) * 1000)) + " ms");
++#endif
+ }
+ 
+ // phase A: parallel closure discovery + interning starting from the targets
+@@ -1547,7 +1565,11 @@
+         if (m > n) n = m;
+     }
+     void zero_all() {
++#ifdef __APPLE__  // MADV_DONTNEED keeps the contents there
++        if (p && n) memset(p, 0, n * sizeof(uint32_t));
++#else
+         if (p && n) madvise(p, n * sizeof(uint32_t), MADV_DONTNEED);  // private anonymous: reads back as zeros
++#endif
+     }
+ };
+ 
+@@ -4322,10 +4344,14 @@
+ }
+ 
+ static size_t default_threads() {
++#ifdef __APPLE__  // no affinity mask: the CPUs that are online
++    size_t n = (size_t)sysconf(_SC_NPROCESSORS_ONLN);
++#else
+     cpu_set_t cs;
+     CPU_ZERO(&cs);
+     size_t n = 8;
+     if (sched_getaffinity(0, sizeof cs, &cs) == 0) n = (size_t)CPU_COUNT(&cs);
++#endif
+     if (n < 1) n = 1;
+     if (n > 64) n = 64;
+     return n;
+@@ -4946,6 +4972,9 @@
+     {
+         struct rusage ru;
+         getrusage(RUSAGE_SELF, &ru);
++#ifdef __APPLE__
++        ru.ru_maxrss /= 1024;  // bytes there, kilobytes on Linux
++#endif
+         logf("done: %s", "names " + std::to_string(st->cn) + " levels " + std::to_string(st->cl) + " exprs " +
+                              std::to_string(st->ce) + " (interned exprs " + std::to_string(x->ec.load()) + "), maxrss " +
+                              std::to_string(ru.ru_maxrss / 1024) + " MB, user " + std::to_string(ru.ru_utime.tv_sec) +
+--- a/native/nostdcxx.h
++++ b/native/nostdcxx.h
+@@ -12,6 +12,7 @@
+ // pthread, operator new/delete and __cxa_guard/atexit symbols may appear.
+ #pragma once
+ 
++#ifndef __APPLE__  // macOS compiles and links with libc++: nothing of libstdc++ to remove or provide
+ #include <bits/c++config.h>
+ #undef _GLIBCXX_EXTERN_TEMPLATE
+ #define _GLIBCXX_EXTERN_TEMPLATE 0
+@@ -21,6 +22,7 @@
+ #undef __GLIBC_USE_C2X_STRTOL
+ #define __GLIBC_USE_C2X_STRTOL 0
+ #endif
++#endif
+ 
+ #include <pthread.h>
+ 
+@@ -43,6 +45,7 @@
+ }
+ }  // namespace lean4export_stdcxx_glue
+ 
++#ifndef __APPLE__
+ #define LEAN4EXPORT_GLUE_WEAK __attribute__((weak))
+ namespace std {
+ LEAN4EXPORT_GLUE_WEAK void __throw_bad_exception() { lean4export_stdcxx_glue::fail("bad_exception", nullptr); }
+@@ -102,6 +105,7 @@
+ }  // namespace __detail
+ }  // namespace std
+ #undef LEAN4EXPORT_GLUE_WEAK
++#endif
+ 
+ namespace lean4export_native {
+ // replacement for std::condition_variable (pthread condition variable used with std::unique_lock<std::mutex>)
+--- a/native/osink.h
++++ b/native/osink.h
+@@ -169,7 +169,9 @@
+         size_t head = (size_t)(a - (uintptr_t)m), tail = len - head - bytes;
+         if (head) munmap(m, head);
+         if (tail) munmap((char*)a + bytes, tail);
++#ifdef MADV_HUGEPAGE
+         madvise((void*)a, bytes, MADV_HUGEPAGE);
++#endif
+         return (char*)a;
+     }
+     // a buffer of at least `want` bytes (recycled if possible); its capacity is returned in `cap`
+@@ -194,8 +196,14 @@
+     // enlarge a get_buffer() buffer to at least `need` bytes (contents kept, may move)
+     char* grow(char* buf, size_t& cap, size_t need) {
+         size_t nc = round_huge(need > cap * 2 ? need : cap * 2);
++#ifdef __APPLE__  // no mremap: a new buffer and a copy
++        char* m = map_huge(nc);
++        memcpy(m, buf, cap);
++        munmap(buf, cap);
++#else
+         void* m = mremap(buf, cap, nc, MREMAP_MAYMOVE);
+         if (m == MAP_FAILED) fatal(std::string("mremap: ") + strerror(errno));
++#endif
+         cap = nc;
+         return (char*)m;
+     }

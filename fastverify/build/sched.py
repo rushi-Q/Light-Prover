@@ -130,7 +130,8 @@ def project_first(lean_path, header):
 
 def main():
     try:
-        ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE = 0
+        if sys.platform != 'darwin':   # macOS has no prctl; its sandbox profile grants no access to another process
+            ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE = 0
     except Exception:  # noqa: BLE001
         print('DECLINE: cannot make the scheduler non-dumpable'); return 3
     jobs = int(sys.argv[1]); memfloor = 8.0; early = False; extra = []; retry_exact = False; lean_override = None
@@ -139,11 +140,16 @@ def main():
     zy_base = None; zyc = None; zy_repl = 16; zy_thp = '0'; zy_log = None; j1sat = False; zy_prefix = None
     ktc_exempt_translate = False
     cg_dirs = []; memfloor_given = False
+    macos = None   # lib/budget.py, loaded for --macos-budget (this script runs as `python3 -I -c`: no sibling import)
     a = sys.argv[2:]
     while a:
         o = a.pop(0)
         if o == '--memfloor': memfloor = float(a.pop(0)); memfloor_given = True
         elif o == '--cgroup': cg_dirs.append(a.pop(0))   # D04: a cgroup (host path) whose memory.max - memory.current bounds the build
+        elif o == '--macos-budget':   # macOS: no /proc and no cgroup, lib/budget.py supplies the memory figures
+            try: import runpy; macos = runpy.run_path(a.pop(0)); macos_total = macos['host_limits']()['mem_total'] or 0
+            except Exception as e:  # noqa: BLE001
+                print(f'DECLINE: cannot read the host budget ({e})'); return 3
         elif o == '--early-release': early = True
         elif o == '--extra-arg': extra.append(a.pop(0))
         elif o == '--retry-exact': retry_exact = True
@@ -406,6 +412,7 @@ def main():
             return None if v == 'max' else int(v)
         except (OSError, ValueError): return None
     cg_max = min([m for m in (cg_read(d, 'memory.max') for d in cg_dirs) if m] or [0]) / 1073741824.0
+    if macos: cg_max = macos_total / 1073741824.0   # the machine's memory is the limit
     if cg_max and not memfloor_given:   # D04: inside a memory-limited cgroup the default 8 GB floor scales with the limit
         memfloor = min(memfloor, 0.25 * cg_max)
 
@@ -414,6 +421,9 @@ def main():
 
     def memavail_gb():
         v = 1e9
+        if macos:   # lib/budget.py's estimate stands in for MemAvailable
+            try: v = macos['darwin_memory_available']() / 1073741824.0
+            except OSError: pass
         try:
             with open('/proc/meminfo') as f:
                 for l in f:
@@ -592,6 +602,8 @@ def main():
     RES = ('Cannot allocate memory', 'failed to map', 'mmap', 'Resource temporarily unavailable', 'Too many open files',
            'out of memory', 'failed to create thread', 'Stack overflow', 'std::bad_alloc', 'No space left on device',
            "failed to read file '")   # mmap exhaustion shows as "failed to read file '<X>.olean.private'" at 1:0
+    if macos:   # the macOS sandbox refuses (EPERM, EACCES) what the Linux one hides or holds in a tmpfs: handed over
+        RES += ('Operation not permitted', 'operation not permitted', 'Permission denied', 'permission denied')
     def resource_failure(stdout, stderr):
         return any(p in stdout or p in stderr for p in RES)
 

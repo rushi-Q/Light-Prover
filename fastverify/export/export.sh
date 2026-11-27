@@ -49,6 +49,41 @@ PKG=$(cd "$HERE/.." && pwd)
 PY=/usr/bin/python3
 BWRAP=/usr/bin/bwrap
 COMP=$HERE/components.json
+# macOS (README.md "macOS"): a sandbox profile under the resource guard stands in for bwrap (lib/macos/stage.sh). The
+# official exporter is the one that tools/configure.py pinned for the toolchain; the native exporter and the closure
+# guard are the ones that export/build-macos.sh built on this machine
+STAGE_OS=; [ -x /usr/bin/uname ] && STAGE_OS=$(/usr/bin/uname -s)
+if [ "$STAGE_OS" = Darwin ]; then
+  D=$PKG STAGE_PID=$$ STAGE_WALL=0 BWRAP=$PKG/lib/macos/sandbox-run.py; . "$PKG/lib/macos/stage.sh" || exit 2
+  macos_pins() { # TC: its version line and official exporter (config/components.json). For Lean 4.33.1 also the two
+    # programs of the record config/export-macos.env, each only if it was built from the sources that
+    # config/components.macos.json pins
+    local sel; sel=$("$PY" -I -c 'import json, sys
+cfg, tc = sys.argv[1:]
+tid, t = [e for e in json.load(open(cfg + "/components.json"))["lean_toolchains"].items() if e[1]["prefix"] == tc][0]
+out = [t["lean_version"], t["official_lean4export"]["path"], t["official_lean4export"]["sha256"]]
+sources = json.load(open(cfg + "/components.macos.json"))["export_sources"]
+try:
+    rows = [line.split(maxsplit=3) for line in open(cfg + "/export-macos.env", encoding="utf-8")]
+except OSError:
+    rows = []
+for name in ("lean4export_native", "closure_check"):
+    pins = [r[2:] for r in rows if r[:2] == ["PIN", name] and len(r) == 4 and r[3].startswith("/")]
+    built = [r[2:] for r in rows if r[:2] == ["SRC", name]] == [[sources[name]]] and len(pins) == 1
+    built = built and tid == "leanprover/lean4:v4.33.1"
+    out += [pins[0][1].rstrip("\n"), pins[0][0]] if built else ["(none for this toolchain: export/build-macos.sh)", "-"]
+print("\n".join(out))' "$PKG/config" "$1" 2>/dev/null) || return 0
+    { read -r NATIVE_LEAN; read -r OFFX; read -r OFFSHA; read -r NATIVE; read -r NATIVE_SHA; read -r CLOSURE
+      read -r CLOSURE_SHA; } <<< "$sel"
+  }
+  macos_export() { # OUT EXPORTER [--setenv NAME VALUE]...: EXPORTER MODS -- TARGETS, sandboxed as below with bwrap:
+    # the toolchain, the project and the sources of --binds readable, nothing writable but a private directory
+    local out exe=$2; out=$(cd "$(dirname "$1")" && pwd -P)/${1##*/} || return 126; shift 2
+    ( cd "$PROJ" && macos_guarded "$out" "${out%/*}" "$TC" --read "$PROJ" --read "$exe" \
+        ${MACOS_READ[@]+"${MACOS_READ[@]}"} --setenv LEAN_PATH "$LP" --setenv LEAN_ABORT_ON_PANIC 1 "$@" -- \
+        "$exe" "${MODS[@]}" -- "${TARGETS[@]}" )
+  }
+fi
 
 jget() { "$PY" -I -c 'import json,sys; c=json.load(open(sys.argv[1]))
 for k in sys.argv[2].split("/"): c=c[k]
@@ -66,6 +101,7 @@ OFFX=$(jget official/path); OFFX=${OFFX/\$LIGHT_LEAN/$(dirname "$PKG")}; OFFSHA=
 # preflight declines as before (other Lean -> the caller runs the official exporter) and --official-fallback declines
 # instead of running the exporter of another release (see run_official).
 select_native() {  # TC
+  if [ "$STAGE_OS" = Darwin ]; then macos_pins "$1"; return 0; fi
   local v sel; v=$(env -i PATH=/usr/bin:/bin "$1/bin/lean" --version 2>/dev/null) || return 0
   sel=$("$PY" -I -c 'import json,sys
 c=json.load(open(sys.argv[1]))
@@ -84,6 +120,8 @@ lean_version_of() { env -i PATH=/usr/bin:/bin "$1/bin/lean" --version 2>/dev/nul
 
 preflight() {  # TC -> 0 iff the native exporter can be used for this toolchain on this host
   local tc=$1 have v
+  # macOS: the pins are looked up by the toolchain's canonical path, which the stage's main flow uses too
+  [ "$STAGE_OS" != Darwin ] || tc=$(readlink -f "$tc" 2>/dev/null || printf %s "$tc")
   select_native "$tc"
   [ -x "$BWRAP" ] || { echo "export: preflight: $BWRAP missing" >&2; return 1; }
   [ -x "$NATIVE" ] || { echo "export: preflight: native exporter $NATIVE missing" >&2; return 1; }
@@ -96,10 +134,15 @@ preflight() {  # TC -> 0 iff the native exporter can be used for this toolchain 
   [ "$v" = "$NATIVE_LEAN" ] || { echo "export: preflight: toolchain is '$v'; the native exporter supports only '$NATIVE_LEAN'" >&2; return 1; }
   # must start and export a tiny closure (Init, Nat.add) on this host, in the sandbox it runs in
   local out; out=$(mktemp /tmp/fv-export-pf.XXXXXX) || return 1
+  if [ "$STAGE_OS" = Darwin ]; then
+    ( cd / && macos_guarded "$out" /tmp "$tc" --read "$NATIVE" --setenv LEAN_PATH "$tc/lib/lean" \
+        --setenv LEAN_ABORT_ON_PANIC 1 --setenv LEAN4EXPORT_VERBOSE 0 -- "$NATIVE" Init -- Nat.add ) 2>/dev/null
+  else
   "$BWRAP" --ro-bind / / --tmpfs /home --tmpfs /root --tmpfs /tmp --dev /dev --proc /proc --clearenv \
       --ro-bind "$tc" "$tc" --setenv PATH "$tc/bin:/usr/bin:/bin" --setenv HOME /tmp --setenv LANG C.UTF-8 \
       --setenv LEAN_PATH "$tc/lib/lean" --setenv LEAN_ABORT_ON_PANIC 1 --setenv LEAN4EXPORT_VERBOSE 0 \
       --unshare-all --die-with-parent --new-session --chdir / -- "$NATIVE" Init -- Nat.add > "$out" 2>/dev/null
+  fi
   local rc=$?
   local n; n=$(grep -c '"def"' "$out" 2>/dev/null)
   rm -f "$out"
@@ -156,6 +199,9 @@ EOF
   EMITTED=1
   exit "$1"
 }
+# (macOS: bash 3.2 has no ${v,,}; there the same test and message come first, so the line below finds nothing missing)
+[ "$STAGE_OS" != Darwin ] || for v in LP MOD TF TC PROJ OUT; do
+  [ -n "${!v}" ] || { echo "export: --$(echo "$v" | tr A-Z a-z) missing" >&2; NAT_WHY="usage"; emit 2; }; done
 for v in LP MOD TF TC PROJ OUT; do [ -n "${!v}" ] || { echo "export: --${v,,} missing" >&2; NAT_WHY="usage"; emit 2; }; done
 [ -f "$TF" ] && [ -r "$TF" ] || { NAT_WHY="targets file unreadable"; emit 2; }
 [ -d "$PROJ" ] && [ -d "$TC" ] || { NAT_WHY="project or toolchain dir missing"; emit 2; }
@@ -179,6 +225,7 @@ OUTDIR=$(dirname "$OUT"); mkdir -p "$OUTDIR" || emit 2
 rm -f "$OUT"
 PART=$(mktemp "$OUTDIR/.export.partial.XXXXXX") || { NAT_WHY="cannot create a private output file"; emit 2; }
 LOGBASE=${JSON:-$OUT}; OFF_BAD=0
+MACOS_READ=()   # macOS: the sources of --binds, readable in the sandbox at their own paths
 
 SBX=("$BWRAP" --ro-bind / / --tmpfs /home --tmpfs /root --tmpfs /tmp --dir /tmp/home --tmpfs /run
      --tmpfs /var)
@@ -201,12 +248,14 @@ if [ -n "$BINDS" ]; then
       case "$x/" in */../*|*/./*|*//*) NAT_WHY="bad binds line"; emit 2 ;; esac
     done
     SBX+=(--ro-bind "$src" "${dst:-$src}")
+    MACOS_READ+=(--read "$src")
   done < "$BINDS"
 fi
 # --ro DIR (r2, review M3): only a plain absolute directory (no control character, no empty/'.'/'..' component, no symlink
 # component: realpath = DIR), below a top-level directory (never '/' or a top-level dir itself), owned by this user (the
 # service's own tree); anything else -> no export (fail closed). Bound read-only at its own path, before the masks are
 # remounted read-only.
+[ "$STAGE_OS" != Darwin ] || [ ${#RO[@]} -eq 0 ] || { NAT_WHY="--ro is not available on macOS"; emit 2; }
 for x in ${RO[@]+"${RO[@]}"}; do
   case "$x" in *[[:cntrl:]]*) NAT_WHY="bad --ro"; emit 2 ;; esac
   case "$x" in /?*/?*) ;; *) NAT_WHY="--ro $x: not below a top-level directory"; emit 2 ;; esac
@@ -224,9 +273,15 @@ run_official() {  # $1 = output file
   # D22: only the exporter of the toolchain's own release may stand in for the official flow
   [ "$(lean_version_of "$TC")" = "$NATIVE_LEAN" ] || { echo "export: no official exporter pinned for this toolchain's release" >&2; OFF_RC=null; OFF_BAD=1; return 2; }
   [ "$(sha256sum "$OFFX" | cut -d' ' -f1)" = "$osha" ] || { echo "export: official exporter sha256 mismatch" >&2; OFF_RC=null; OFF_BAD=1; return 2; }
+  if [ "$STAGE_OS" = Darwin ]; then
+    macos_export "$1" "$OFFX" 2>> "$LOGBASE.official.log"
+  else
   "${SBX[@]}" --ro-bind "$OFFX" "$OFFX" ${SBXRO[@]+"${SBXRO[@]}"} --unshare-all --die-with-parent --new-session --chdir "$PROJ" -- \
       "$OFFX" "${MODS[@]}" -- "${TARGETS[@]}" > "$1" 2>> "$LOGBASE.official.log"
+  fi
   OFF_RC=$?
+  # macOS: a failure can be the sandbox's or the guard's (a refused access, the memory limit): no verdict, never exit 1
+  [ "$STAGE_OS" != Darwin ] || [ "$OFF_RC" = 0 ] || OFF_BAD=1
   OFF_SEC=$(echo "$(date +%s.%N) - $t" | bc)
   return $OFF_RC
 }
@@ -246,8 +301,12 @@ else
   [ "$THREADS" -gt 0 ] && EXTRA+=(--setenv LEAN4EXPORT_THREADS "$THREADS")
   [ "$NM" -gt 100000 ] && EXTRA+=(--setenv LEAN4EXPORT_EXPR_ESTIMATE_LOG2 31)
   t=$(date +%s.%N)
+  if [ "$STAGE_OS" = Darwin ]; then
+    macos_export "$PART" "$NATIVE" "${EXTRA[@]}" 2> "$PART.err" &
+  else
   "${SBX[@]}" "${EXTRA[@]}" --ro-bind "$NATIVE" "$NATIVE" ${SBXRO[@]+"${SBXRO[@]}"} --unshare-all --die-with-parent --new-session --chdir "$PROJ" -- \
       "$NATIVE" "${MODS[@]}" -- "${TARGETS[@]}" > "$PART" 2> "$PART.err" &
+  fi
   NPID=$!
   # S07 (early return): the native child logs 'done: names ...' right after OSink::finish() = every output chunk is in
   # the file and the file is trimmed to its exact length; what follows is only its page teardown and exit (~10 s on RH
@@ -256,7 +315,9 @@ else
   # handled exactly as before (exit code of the native exporter).
   while :; do
     if ! kill -0 "$NPID" 2>/dev/null; then wait "$NPID"; NAT_RC=$?; break; fi
-    if grep -q 's thread\] done: names ' "$PART.err" 2>/dev/null; then
+    # (not on macOS: there this kill ends a subshell of the stage and none of the sandbox's processes, which could
+    # still fail or change the file; the stage waits for the exporter's exit status)
+    if [ "$STAGE_OS" != Darwin ] && grep -q 's thread\] done: names ' "$PART.err" 2>/dev/null; then
       kill -KILL "$NPID" 2>/dev/null; NAT_RC=0; NAT_EARLY=1; break
     fi
     sleep 0.05
@@ -291,6 +352,9 @@ fi
 if [ "$MODE" = native ]; then
   if [ $VERIFY -eq 1 ]; then
     run_official "$PART.official"
+    # macOS: an official exporter that did not finish (the guard's limits, a refused access) compares nothing
+    [ "$STAGE_OS" != Darwin ] || [ $OFF_BAD -eq 0 ] \
+      || { rm -f "$PART"; MODE=none; NAT_WHY="--verify: the official exporter did not finish"; emit 2; }
     if [ "$OFF_RC" = 0 ] && cmp -s "$PART" "$PART.official"; then VER=identical
     else VER="DIFFERENT (official exit $OFF_RC)"; rm -f "$PART"; MODE=none; emit 3; fi
     rm -f "$PART.official"

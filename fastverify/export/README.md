@@ -78,7 +78,48 @@ more than 100k `.olean` files, LEAN4EXPORT_EXPR_ESTIMATE_LOG2=31 (initial table 
 is a private file created by the stage and renamed to OUT only after exit 0. The script is one function (parsed
 completely before it runs), so replacing it during a run cannot corrupt that run.
 
+## macOS
+
+On macOS (Apple silicon, Lean 4.33.1) the stage runs E1 and E0 natively, in the sandbox of `lib/macos/stage.sh`.
+Readable there: the toolchain, the project, the sources of `--binds`, the exporter itself and, as in every sandbox
+start of that file, the developer directory (`xcode-select -p`) and the system's programs and libraries
+(`lib/macos/sandbox-run.py` lists them). Writable: a private temporary directory; the output file is opened outside
+the sandbox.
+
+- **E0** is the official exporter that `tools/configure.py` pinned for the toolchain (`config/components.macos.json`):
+  upstream lean4export v4.33.0 built on the Mac with the release toolchain.
+- **E1 and the closure guard** are compiled on the machine by the system's C++ compiler, which differs from Mac to
+  Mac, so the tree has no digest of them (it has one of the judge's Lean programs: the pinned toolchain's own compiler
+  builds those). `export/build-macos.sh OUTDIR` builds `sources/lean4export-native` with
+  `export/native-exporter-macos.patch` and `export/closure/closure_check.cpp`, and records both in
+  `config/export-macos.env`, a file of the export stage alone: a comment line with the compiler and the SDK, then
+  `SRC <program> <fingerprint of its sources>` and `PIN <program> <sha256> <path>`. `config/components.macos.json`
+  pins the two fingerprints. `export.sh` uses a recorded program only if it was built from these sources and has the
+  recorded sha256; without one, `--preflight` fails and `--official-fallback` gives E0.
+
+The patch (40 added lines, each inside a test for macOS, applied to a private copy: the vendored sources stay as they
+are) compiles the C++ core with libc++ instead of the libstdc++ glue, lets the output sink take its WRITE back end
+(MAP and DIO reopen `/proc/self/fd/1`), grows an output buffer by copying (no `mremap`), leaves the parallel teardown
+out, and takes the number of CPUs online as the default number of threads. The exporter is outside the trusted check:
+the closure guard and the judge examine what it writes, so a wrong export can cost a verdict and cannot make one.
+
+What differs from Linux:
+
+- The stage waits for the native exporter's exit status. Linux returns at the exporter's last log line and kills the
+  sandbox; on macOS that kill would not reach the sandbox's processes.
+- A failing official exporter is exit 2 (no verdict), never exit 1, and under `--verify` exit 2, not 3: the failure can
+  be the sandbox's or the guard's (a refused access; a physical footprint above the machine's memory).
+- `--ro` is refused: its check of the directory's owner is written for Linux.
+- E1 is built for Lean 4.33.1 only: no `natives_other` exporter and no low-memory exporter. Another toolchain with
+  macOS pins is exported by its official exporter (`--official-fallback`).
+
 ## Tests
+* `tests/export/macos.py [WORK]` (macOS only, about 1 min), in a copy of the tree, so that the machine's record is not
+  touched: the recipe, which leaves the judge's record alone; E1 on a project with a dependency package,
+  byte-identical to E0 inside and outside the sandbox, with the default threads and with one; no export without
+  `--binds`, with a missing target or with `--ro`; the closure guard against a recorded program that leaves out a
+  declaration; a recorded program that fails after its last log line; a record with another source fingerprint;
+  `--verify` without E0.
 * `tests/export/run.sh [WORK] [--heavy]` (also `tests/stage-export`): oleans built with the official 4.33.1 (some
   with `-Ddebug.skipKernelTC=true` to obtain kernel-invalid inputs); E1 vs E0 on: control, 008, 010, 013 (types differ:
   theorem and axiom), equal duplicates (incl. binder-name/-info differences), 018, 030, 033, foreign githash, IR parts
@@ -89,5 +130,7 @@ completely before it runs), so replacing it during a run cannot corrupt that run
   declines); the closure guard against a fake native exporter that drops one declaration (must decline); an injected
   internal script error (exit 2); `--heavy` adds
   rh-mid. PASS = identical bytes, or E1 declines and the E0 fallback gives the official result.
+  On macOS it runs with the recorded E1, without the two cases that copy the stage script (closure guard, internal
+  error): `tests/export/macos.py` has them.
 * `tests/export/difftest/difftest.sh WORK NRUNS SEED [JOBS]`: random-target differential test against E0 on the
   rh-mid environment (needs the compiled `ListConsts.lean`, see the script).
